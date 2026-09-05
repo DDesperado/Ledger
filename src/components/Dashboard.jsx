@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import {
   Check, Plus, Trash2, Send, Dumbbell, UtensilsCrossed, NotebookPen,
   Sparkles, ListChecks, Loader2, Wallet, ShoppingCart, Landmark, TrendingUp, BookOpen, RefreshCw, Settings, Download, Upload,
-  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2, X, Bell,
+  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2, X, Bell, Mic,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import * as db from "../lib/store";
 import { getSetting, setSetting, exportAll, importAll } from "../lib/store";
-import { INK, PANEL, PANEL2, RULE, PAPER, MUTED, BRASS, VERDI, RUST, inputStyle, uid, todayStr, fmtDate, fetchQuote, colorFor } from "../lib/theme";
+import { INK, PANEL, PANEL2, CARD, CARD_ELEVATED, RULE, PAPER, MUTED, FAINT, BRASS, VERDI, RUST, SUCCESS, WARNING, INFO, inputStyle, uid, todayStr, fmtDate, fetchQuote, colorFor, DIETARY_TYPES, COMMON_ALLERGENS, recipeMatchesDiet, recipeMatchesAllergies } from "../lib/theme";
 
 const DEFAULT_ITEMS = [
   { category: "Morning", label: "Clear inbox & plan the day" },
@@ -26,14 +26,17 @@ const DEFAULT_RECIPES = [
   {
     name: "Egg & Cheese Sandwich", prepTime: 10, calories: 380, protein: 22, carbs: 32, fat: 18,
     ingredients: [{ name: "Eggs", qty: 2, unit: "pcs" }, { name: "Bread", qty: 2, unit: "slices" }, { name: "Cheese", qty: 40, unit: "g" }],
+    dietTags: ["vegetarian", "dairy", "eggs"], allergens: ["Eggs", "Milk", "Wheat"],
   },
   {
     name: "Chicken Rice Bowl", prepTime: 20, calories: 610, protein: 42, carbs: 72, fat: 14,
     ingredients: [{ name: "Chicken", qty: 150, unit: "g" }, { name: "Rice", qty: 200, unit: "g" }, { name: "Vegetables", qty: 100, unit: "g" }],
+    dietTags: ["meat"], allergens: [],
   },
   {
     name: "Protein Oats", prepTime: 8, calories: 420, protein: 32, carbs: 48, fat: 10,
     ingredients: [{ name: "Oats", qty: 60, unit: "g" }, { name: "Protein Powder", qty: 30, unit: "g" }, { name: "Milk", qty: 250, unit: "ml" }],
+    dietTags: ["vegetarian", "dairy"], allergens: ["Milk"],
   },
 ];
 
@@ -67,9 +70,8 @@ function SectionLabel({ children }) {
 function Card({ children, style }) {
   return (
     <div style={{
-      background: PANEL, border: `1px solid ${RULE}`, borderRadius: 6, padding: 20,
-      backgroundImage: `repeating-linear-gradient(${PANEL}, ${PANEL} 27px, ${RULE} 28px)`,
-      boxShadow: "0 1px 2px rgba(0,0,0,0.25), 0 8px 24px -12px rgba(0,0,0,0.4)",
+      background: CARD, border: `1px solid ${RULE}`, borderRadius: 14, padding: 20,
+      boxShadow: "0 1px 2px rgba(0,0,0,0.2), 0 6px 20px -10px rgba(0,0,0,0.35)",
       transition: "box-shadow 0.2s ease, transform 0.2s ease",
       ...style,
     }}>
@@ -146,6 +148,9 @@ export default function Dashboard() {
   const [showReminders, setShowReminders] = useState(false);
   const [notifPermission, setNotifPermission] = useState(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [dietTypes, setDietTypes] = useState(JSON.parse(getSetting("dietTypes", "[]")));
+  const [allergies, setAllergies] = useState(JSON.parse(getSetting("allergies", "[]")));
+  const [showDietSettings, setShowDietSettings] = useState(false);
 
   useEffect(() => {
     if (!displayName) { setLoading(false); return; }
@@ -263,6 +268,18 @@ export default function Dashboard() {
     setSetting("apiKey", key);
   };
 
+  const toggleDietType = (type) => {
+    const next = dietTypes.includes(type) ? dietTypes.filter((d) => d !== type) : [...dietTypes, type];
+    setDietTypes(next);
+    setSetting("dietTypes", JSON.stringify(next));
+  };
+
+  const toggleAllergy = (allergy) => {
+    const next = allergies.includes(allergy) ? allergies.filter((a) => a !== allergy) : [...allergies, allergy];
+    setAllergies(next);
+    setSetting("allergies", JSON.stringify(next));
+  };
+
   const downloadBackup = () => {
     const blob = new Blob([exportAll()], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -292,17 +309,17 @@ export default function Dashboard() {
     return (
       <div style={{ minHeight: "100vh", background: INK, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter" }}>
         <div style={{ width: 320, textAlign: "center" }}>
-          <div style={{ fontFamily: "Fraunces", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6 }}>Ledger</div>
+          <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6 }}>Ledger</div>
           <div style={{ color: MUTED, fontSize: 13, marginBottom: 24 }}>a daily accounting of you</div>
           <input
             autoFocus value={nameInput} onChange={(e) => setNameInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && nameInput.trim()) { setSetting("displayName", nameInput.trim()); setDisplayName(nameInput.trim()); } }}
             placeholder="Your name"
-            style={{ width: "100%", background: PANEL, border: `1px solid ${RULE}`, borderRadius: 4, padding: "12px 14px", color: PAPER, fontFamily: "IBM Plex Mono", fontSize: 14, outline: "none", marginBottom: 12, boxSizing: "border-box" }}
+            style={{ width: "100%", background: PANEL, border: `1px solid ${RULE}`, borderRadius: 10, padding: "12px 14px", color: PAPER, fontFamily: "IBM Plex Mono", fontSize: 14, outline: "none", marginBottom: 12, boxSizing: "border-box" }}
           />
           <button
             onClick={() => { if (nameInput.trim()) { setSetting("displayName", nameInput.trim()); setDisplayName(nameInput.trim()); } }}
-            style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 4, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer" }}
+            style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer" }}
           >
             Open my ledger
           </button>
@@ -338,7 +355,7 @@ export default function Dashboard() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28 }}>
           <div>
             <div style={{ fontFamily: "IBM Plex Mono", fontSize: 11, letterSpacing: "0.14em", color: BRASS, marginBottom: 8 }}>{dateLabel.toUpperCase()}</div>
-            <div style={{ fontFamily: "Fraunces", fontWeight: 600, fontSize: 30, lineHeight: 1.15 }}>
+            <div style={{ fontFamily: "Inter", fontWeight: 600, fontSize: 30, lineHeight: 1.15 }}>
               {greeting}, <span style={{ fontStyle: "italic", fontWeight: 500 }}>{displayName}</span>.
             </div>
           </div>
@@ -357,6 +374,36 @@ export default function Dashboard() {
 
         {showSettings && (
           <Card style={{ marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <SectionLabel>Food & Dietary Preferences</SectionLabel>
+              <button onClick={() => setShowDietSettings((v) => !v)} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 12, color: MUTED, fontSize: 11, padding: "3px 10px", cursor: "pointer" }}>{showDietSettings ? "close" : "edit"}</button>
+            </div>
+            {(dietTypes.length > 0 || allergies.length > 0) && !showDietSettings && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+                {dietTypes.map((d) => <span key={d} style={{ background: PANEL2, color: BRASS, borderRadius: 12, padding: "3px 10px", fontSize: 11 }}>{d}</span>)}
+                {allergies.map((a) => <span key={a} style={{ background: PANEL2, color: RUST, borderRadius: 12, padding: "3px 10px", fontSize: 11 }}>No {a}</span>)}
+              </div>
+            )}
+            {dietTypes.length === 0 && allergies.length === 0 && !showDietSettings && (
+              <div style={{ color: MUTED, fontSize: 12, marginBottom: 16 }}>No preferences set — all recipes will be shown.</div>
+            )}
+            {showDietSettings && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Diet type</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+                  {DIETARY_TYPES.map((d) => (
+                    <button key={d} onClick={() => toggleDietType(d)} style={{ background: dietTypes.includes(d) ? BRASS : "transparent", color: dietTypes.includes(d) ? INK : MUTED, border: `1px solid ${dietTypes.includes(d) ? BRASS : RULE}`, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>{d}</button>
+                  ))}
+                </div>
+                <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Allergies — recipes containing these are hidden entirely</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {COMMON_ALLERGENS.map((a) => (
+                    <button key={a} onClick={() => toggleAllergy(a)} style={{ background: allergies.includes(a) ? RUST : "transparent", color: allergies.includes(a) ? PAPER : MUTED, border: `1px solid ${allergies.includes(a) ? RUST : RULE}`, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>{a}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <SectionLabel>Notifications</SectionLabel>
             {notifPermission === "granted" ? (
               <div style={{ display: "flex", alignItems: "center", gap: 6, color: VERDI, fontSize: 12, marginBottom: 16 }}>
@@ -366,7 +413,7 @@ export default function Dashboard() {
               <div style={{ color: MUTED, fontSize: 12, marginBottom: 16 }}>Blocked in your browser settings. You can still check the bell icon for alerts.</div>
             ) : (
               <div style={{ marginBottom: 16 }}>
-                <button onClick={requestNotifications} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 4, padding: "8px 14px", cursor: "pointer", fontSize: 12, marginBottom: 6 }}>Enable notifications</button>
+                <button onClick={requestNotifications} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontSize: 12, marginBottom: 6 }}>Enable notifications</button>
                 <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5 }}>Only fires while Ledger is open — this isn't a background push service, so it won't reach you if the tab is closed.</div>
               </div>
             )}
@@ -380,10 +427,10 @@ export default function Dashboard() {
             </div>
             <SectionLabel>Backup</SectionLabel>
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={downloadBackup} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 4, padding: "8px", cursor: "pointer", fontSize: 12 }}>
+              <button onClick={downloadBackup} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "8px", cursor: "pointer", fontSize: 12 }}>
                 <Download size={13} /> Download backup
               </button>
-              <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 4, padding: "8px", cursor: "pointer", fontSize: 12 }}>
+              <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "8px", cursor: "pointer", fontSize: 12 }}>
                 <Upload size={13} /> Restore backup
                 <input type="file" accept="application/json" onChange={uploadBackup} style={{ display: "none" }} />
               </label>
@@ -399,6 +446,10 @@ export default function Dashboard() {
             .ledger-bottom-nav { display: flex; }
             .ledger-page-content { padding-bottom: 76px; }
           }
+          @keyframes ledgerFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+          .ledger-page-content > div { animation: ledgerFadeIn 0.2s ease; }
+          button { transition: transform 0.1s ease, opacity 0.15s ease; }
+          button:active { transform: scale(0.97); }
         `}</style>
 
         <div className="ledger-top-nav" style={{ flexWrap: "wrap", gap: 4, borderBottom: `1px solid ${RULE}`, marginBottom: 24 }}>
@@ -438,6 +489,7 @@ export default function Dashboard() {
             recipes={recipes} setRecipes={setRecipes}
             meals={meals} setMeals={setMeals}
             spending={spending}
+            dietTypes={dietTypes} allergies={allergies} onEditDiet={() => { setShowSettings(true); setShowDietSettings(true); }}
           />
         )}
         {tab === "assistant" && (
@@ -508,7 +560,7 @@ export default function Dashboard() {
         )}
 
         {showOnboarding && (
-          <Onboarding onFinish={finishOnboarding} setTargets={setTargets} requestNotifications={requestNotifications} />
+          <Onboarding onFinish={finishOnboarding} setTargets={setTargets} requestNotifications={requestNotifications} dietTypes={dietTypes} toggleDietType={toggleDietType} allergies={allergies} toggleAllergy={toggleAllergy} />
         )}
       </div>
     </div>
@@ -524,7 +576,7 @@ function RemindersPanel({ alerts, reminders, onClose, addReminder, toggleReminde
       <div onClick={(e) => e.stopPropagation()} style={{ background: PANEL, borderTopLeftRadius: 12, borderTopRightRadius: 12, padding: "20px 16px calc(20px + env(safe-area-inset-bottom))", width: "100%", maxWidth: 720, maxHeight: "80vh", overflowY: "auto" }}>
         <div style={{ width: 36, height: 4, background: RULE, borderRadius: 2, margin: "0 auto 16px" }} />
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div style={{ fontFamily: "Fraunces", fontSize: 18, fontWeight: 600 }}>Alerts & reminders</div>
+          <div style={{ fontFamily: "Inter", fontSize: 18, fontWeight: 600 }}>Alerts & reminders</div>
           <button onClick={onClose} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer" }}><X size={18} /></button>
         </div>
 
@@ -545,11 +597,11 @@ function RemindersPanel({ alerts, reminders, onClose, addReminder, toggleReminde
         <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr auto", gap: 8, marginBottom: 16 }}>
           <input placeholder="Remind me to…" value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} />
           <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={inputStyle} />
-          <button onClick={() => { addReminder(title, dueDate); setTitle(""); }} style={{ background: BRASS, border: "none", borderRadius: 4, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <button onClick={() => { addReminder(title, dueDate); setTitle(""); }} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
         </div>
         {reminders.map((r) => (
           <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${RULE}` }}>
-            <button onClick={() => toggleReminder(r.id)} style={{ width: 20, height: 20, borderRadius: 4, border: `1px solid ${r.done ? BRASS : MUTED}`, background: r.done ? BRASS : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+            <button onClick={() => toggleReminder(r.id)} style={{ width: 20, height: 20, borderRadius: 10, border: `1px solid ${r.done ? BRASS : MUTED}`, background: r.done ? BRASS : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
               {r.done && <Check size={13} color={INK} strokeWidth={3} />}
             </button>
             <span style={{ flex: 1, fontSize: 13, textDecoration: r.done ? "line-through" : "none", color: r.done ? MUTED : PAPER }}>{r.title}</span>
@@ -563,7 +615,7 @@ function RemindersPanel({ alerts, reminders, onClose, addReminder, toggleReminde
   );
 }
 
-function Onboarding({ onFinish, setTargets, requestNotifications }) {
+function Onboarding({ onFinish, setTargets, requestNotifications, dietTypes, toggleDietType, allergies, toggleAllergy }) {
   const [step, setStep] = useState(0);
   const [focus, setFocus] = useState({ Health: true, Fitness: true, Food: true, Finance: true, Tasks: true });
   const [proteinGoal, setProteinGoal] = useState("150");
@@ -581,7 +633,7 @@ function Onboarding({ onFinish, setTargets, requestNotifications }) {
       <div style={{ width: 340, textAlign: "center" }}>
         {step === 0 && (
           <>
-            <div style={{ fontFamily: "Fraunces", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6 }}>Welcome to Ledger</div>
+            <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6 }}>Welcome to Ledger</div>
             <div style={{ color: MUTED, fontSize: 14, marginBottom: 28 }}>Your personal operating system.</div>
             <div style={{ color: MUTED, fontSize: 12, marginBottom: 20, textAlign: "left" }}>What do you want Ledger to help manage?</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28 }}>
@@ -590,32 +642,51 @@ function Onboarding({ onFinish, setTargets, requestNotifications }) {
                   display: "flex", alignItems: "center", gap: 10, background: focus[k] ? PANEL2 : "transparent",
                   border: `1px solid ${focus[k] ? BRASS : RULE}`, borderRadius: 6, padding: "10px 14px", cursor: "pointer", color: PAPER, fontSize: 14,
                 }}>
-                  <span style={{ width: 16, height: 16, borderRadius: 4, border: `1px solid ${focus[k] ? BRASS : MUTED}`, background: focus[k] ? BRASS : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <span style={{ width: 16, height: 16, borderRadius: 10, border: `1px solid ${focus[k] ? BRASS : MUTED}`, background: focus[k] ? BRASS : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     {focus[k] && <Check size={11} color={INK} strokeWidth={3} />}
                   </span>
                   {k}
                 </button>
               ))}
             </div>
-            <button onClick={() => setStep(1)} style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 4, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Continue</button>
+            <button onClick={() => setStep(1)} style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Continue</button>
             <button onClick={onFinish} style={{ width: "100%", background: "transparent", color: MUTED, border: "none", padding: "8px", fontSize: 13, cursor: "pointer" }}>Skip for now</button>
           </>
         )}
         {step === 1 && (
           <>
-            <div style={{ fontFamily: "Fraunces", fontWeight: 700, fontSize: 24, color: PAPER, marginBottom: 20 }}>Daily protein target</div>
-            <input type="number" value={proteinGoal} onChange={(e) => setProteinGoal(e.target.value)} style={{ width: "100%", background: PANEL, border: `1px solid ${RULE}`, borderRadius: 4, padding: "12px 14px", color: PAPER, fontFamily: "IBM Plex Mono", fontSize: 14, outline: "none", marginBottom: 24, boxSizing: "border-box", textAlign: "center" }} />
-            <button onClick={() => setStep(2)} style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 4, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Continue</button>
+            <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 24, color: PAPER, marginBottom: 6 }}>How do you eat?</div>
+            <div style={{ color: MUTED, fontSize: 12, marginBottom: 16 }}>This shapes which recipes Kitchen shows you. Editable later in Settings.</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginBottom: 20 }}>
+              {DIETARY_TYPES.map((d) => (
+                <button key={d} onClick={() => toggleDietType(d)} style={{ background: dietTypes.includes(d) ? BRASS : "transparent", color: dietTypes.includes(d) ? INK : MUTED, border: `1px solid ${dietTypes.includes(d) ? BRASS : RULE}`, borderRadius: 12, padding: "5px 11px", fontSize: 12, cursor: "pointer" }}>{d}</button>
+              ))}
+            </div>
+            <div style={{ color: MUTED, fontSize: 12, marginBottom: 8, textAlign: "left" }}>Anything to avoid?</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 24 }}>
+              {COMMON_ALLERGENS.map((a) => (
+                <button key={a} onClick={() => toggleAllergy(a)} style={{ background: allergies.includes(a) ? RUST : "transparent", color: allergies.includes(a) ? PAPER : MUTED, border: `1px solid ${allergies.includes(a) ? RUST : RULE}`, borderRadius: 12, padding: "5px 11px", fontSize: 12, cursor: "pointer" }}>{a}</button>
+              ))}
+            </div>
+            <button onClick={() => setStep(2)} style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Continue</button>
             <button onClick={onFinish} style={{ width: "100%", background: "transparent", color: MUTED, border: "none", padding: "8px", fontSize: 13, cursor: "pointer" }}>Skip for now</button>
           </>
         )}
         {step === 2 && (
           <>
-            <div style={{ fontFamily: "Fraunces", fontWeight: 700, fontSize: 24, color: PAPER, marginBottom: 12 }}>Stay on top of things</div>
+            <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 24, color: PAPER, marginBottom: 20 }}>Daily protein target</div>
+            <input type="number" value={proteinGoal} onChange={(e) => setProteinGoal(e.target.value)} style={{ width: "100%", background: PANEL, border: `1px solid ${RULE}`, borderRadius: 10, padding: "12px 14px", color: PAPER, fontFamily: "IBM Plex Mono", fontSize: 14, outline: "none", marginBottom: 24, boxSizing: "border-box", textAlign: "center" }} />
+            <button onClick={() => setStep(3)} style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Continue</button>
+            <button onClick={onFinish} style={{ width: "100%", background: "transparent", color: MUTED, border: "none", padding: "8px", fontSize: 13, cursor: "pointer" }}>Skip for now</button>
+          </>
+        )}
+        {step === 3 && (
+          <>
+            <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 24, color: PAPER, marginBottom: 12 }}>Stay on top of things</div>
             <div style={{ color: MUTED, fontSize: 13, marginBottom: 24, lineHeight: 1.5 }}>
               Get alerted when you're low on groceries or a reminder's due — only while Ledger is open.
             </div>
-            <button onClick={async () => { await requestNotifications(); finishSetup(); }} style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 4, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Enable notifications</button>
+            <button onClick={async () => { await requestNotifications(); finishSetup(); }} style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Enable notifications</button>
             <button onClick={finishSetup} style={{ width: "100%", background: "transparent", color: MUTED, border: "none", padding: "8px", fontSize: 13, cursor: "pointer" }}>Skip for now</button>
           </>
         )}
@@ -649,7 +720,7 @@ function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, 
         <Gauge percent={percent} />
         <div>
           <SectionLabel>Today's completion</SectionLabel>
-          <div style={{ fontFamily: "Fraunces", fontSize: 20, fontWeight: 600 }}>
+          <div style={{ fontFamily: "Inter", fontSize: 20, fontWeight: 600 }}>
             <LedgerNum value={doneToday.length} /> <span style={{ color: MUTED, fontWeight: 400 }}>of</span> <LedgerNum value={items.length} /> entries closed
           </div>
         </div>
@@ -674,7 +745,7 @@ function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, 
             const done = doneToday.includes(item.id);
             return (
               <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${RULE}` }}>
-                <button onClick={() => toggleItem(item.id)} style={{ width: 20, height: 20, borderRadius: 4, border: `1px solid ${done ? BRASS : MUTED}`, background: done ? BRASS : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, transition: "all 0.15s ease" }}>
+                <button onClick={() => toggleItem(item.id)} style={{ width: 20, height: 20, borderRadius: 10, border: `1px solid ${done ? BRASS : MUTED}`, background: done ? BRASS : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, transition: "all 0.15s ease" }}>
                   {done && <Check size={13} color={INK} strokeWidth={3} />}
                 </button>
                 <span style={{ flex: 1, fontSize: 14, textDecoration: done ? "line-through" : "none", color: done ? MUTED : PAPER }}>{item.label}</span>
@@ -687,11 +758,11 @@ function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, 
       <Card>
         <SectionLabel>Add entry</SectionLabel>
         <div style={{ display: "flex", gap: 8 }}>
-          <select value={newCat} onChange={(e) => setNewCat(e.target.value)} style={{ background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 4, padding: "8px 10px", fontSize: 13 }}>
+          <select value={newCat} onChange={(e) => setNewCat(e.target.value)} style={{ background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "8px 10px", fontSize: 13 }}>
             {[...categories, "General"].filter((v, i, a) => a.indexOf(v) === i).map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { addItem(newCat, newLabel); setNewLabel(""); } }} placeholder="e.g. Stretch for 10 minutes" style={{ flex: 1, background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 4, padding: "8px 10px", fontSize: 13, outline: "none" }} />
-          <button onClick={() => { addItem(newCat, newLabel); setNewLabel(""); }} style={{ background: BRASS, border: "none", borderRadius: 4, padding: "0 12px", cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { addItem(newCat, newLabel); setNewLabel(""); } }} placeholder="e.g. Stretch for 10 minutes" style={{ flex: 1, background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "8px 10px", fontSize: 13, outline: "none" }} />
+          <button onClick={() => { addItem(newCat, newLabel); setNewLabel(""); }} style={{ background: BRASS, border: "none", borderRadius: 10, padding: "0 12px", cursor: "pointer" }}><Plus size={16} color={INK} /></button>
         </div>
       </Card>
     </div>
@@ -723,14 +794,14 @@ function WorkoutTab({ workouts, setWorkouts }) {
           <input placeholder="Sets" type="number" value={form.sets} onChange={(e) => setForm({ ...form, sets: e.target.value })} style={inputStyle} />
           <input placeholder="Reps" type="number" value={form.reps} onChange={(e) => setForm({ ...form, reps: e.target.value })} style={inputStyle} />
           <input placeholder="Weight" type="number" value={form.weight} onChange={(e) => setForm({ ...form, weight: e.target.value })} style={inputStyle} />
-          <button onClick={addWorkout} style={{ background: BRASS, border: "none", borderRadius: 4, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <button onClick={addWorkout} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
         </div>
       </Card>
       {exercises.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <SectionLabel>Progression</SectionLabel>
-            <select value={chartExercise} onChange={(e) => setChartExercise(e.target.value)} style={{ background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 4, padding: "4px 8px", fontSize: 12 }}>
+            <select value={chartExercise} onChange={(e) => setChartExercise(e.target.value)} style={{ background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "4px 8px", fontSize: 12 }}>
               {exercises.map((ex) => <option key={ex} value={ex}>{ex}</option>)}
             </select>
           </div>
@@ -799,7 +870,7 @@ function NutritionTab({ targets, setTargets, meals, setMeals }) {
         {editTargets && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr auto", gap: 8, marginBottom: 14 }}>
             {rows.map((r) => <input key={r.k} type="number" value={targetsForm[r.k]} onChange={(e) => setTargetsForm({ ...targetsForm, [r.k]: e.target.value })} placeholder={r.label} style={inputStyle} />)}
-            <button onClick={saveTargets} style={{ background: BRASS, border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Save</button>
+            <button onClick={saveTargets} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Save</button>
           </div>
         )}
         {rows.map((r) => {
@@ -827,7 +898,7 @@ function NutritionTab({ targets, setTargets, meals, setMeals }) {
           <input placeholder="Protein" type="number" value={form.protein} onChange={(e) => setForm({ ...form, protein: e.target.value })} style={inputStyle} />
           <input placeholder="Carbs" type="number" value={form.carbs} onChange={(e) => setForm({ ...form, carbs: e.target.value })} style={inputStyle} />
           <input placeholder="Fat" type="number" value={form.fat} onChange={(e) => setForm({ ...form, fat: e.target.value })} style={inputStyle} />
-          <button onClick={addEntry} style={{ background: BRASS, border: "none", borderRadius: 4, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <button onClick={addEntry} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
         </div>
       </Card>
       <Card>
@@ -862,12 +933,12 @@ function ReflectTab({ reflections, setReflections }) {
     <div>
       <Card style={{ marginBottom: 16 }}>
         <SectionLabel>New entry — {fmtDate(todayStr())}</SectionLabel>
-        <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="What happened today? What's on your mind?" rows={4} style={{ width: "100%", background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 4, padding: 10, fontSize: 14, outline: "none", resize: "vertical", boxSizing: "border-box" }} />
+        <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="What happened today? What's on your mind?" rows={4} style={{ width: "100%", background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: 10, fontSize: 14, outline: "none", resize: "vertical", boxSizing: "border-box" }} />
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
           <div style={{ display: "flex", gap: 6 }}>
             {moods.map((m) => <button key={m} onClick={() => setMood(m)} style={{ background: mood === m ? colorFor(m) : "transparent", color: mood === m ? INK : MUTED, border: `1px solid ${mood === m ? colorFor(m) : RULE}`, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer", transition: "all 0.15s ease" }}>{m}</button>)}
           </div>
-          <button onClick={addEntry} style={{ background: BRASS, border: "none", borderRadius: 4, padding: "8px 16px", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Save</button>
+          <button onClick={addEntry} style={{ background: BRASS, border: "none", borderRadius: 10, padding: "8px 16px", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Save</button>
         </div>
       </Card>
       {reflections.map((r) => (
@@ -884,7 +955,7 @@ function ReflectTab({ reflections, setReflections }) {
   );
 }
 
-function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList, recipes, setRecipes, meals, setMeals, spending }) {
+function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList, recipes, setRecipes, meals, setMeals, spending, dietTypes, allergies, onEditDiet }) {
   const [sub, setSub] = useState("inventory");
   const low = kitchen.filter((k) => k.qty <= k.threshold);
 
@@ -893,6 +964,14 @@ function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList, recipe
 
   return (
     <div>
+      {(dietTypes.length > 0 || allergies.length > 0) && (
+        <div onClick={onEditDiet} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, cursor: "pointer" }}>
+          <span style={{ fontSize: 10, color: FAINT, letterSpacing: "0.1em", textTransform: "uppercase" }}>Food profile</span>
+          {dietTypes.map((d) => <span key={d} style={{ background: PANEL2, color: BRASS, borderRadius: 12, padding: "2px 8px", fontSize: 10 }}>{d}</span>)}
+          {allergies.map((a) => <span key={a} style={{ background: PANEL2, color: RUST, borderRadius: 12, padding: "2px 8px", fontSize: 10 }}>No {a}</span>)}
+          <span style={{ fontSize: 10, color: MUTED }}>Edit</span>
+        </div>
+      )}
       <div style={{ display: "flex", gap: 4, marginBottom: 16, flexWrap: "wrap" }}>
         {[
           { id: "inventory", label: "Inventory" },
@@ -912,35 +991,39 @@ function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList, recipe
       {grocerySpend > 0 && (
         <Card style={{ marginBottom: 16 }}>
           <SectionLabel>Grocery spend this month</SectionLabel>
-          <div style={{ fontFamily: "Fraunces", fontSize: 24, fontWeight: 600 }}><LedgerNum value={`$${grocerySpend.toFixed(2)}`} /></div>
+          <div style={{ fontFamily: "Inter", fontSize: 24, fontWeight: 600 }}><LedgerNum value={`$${grocerySpend.toFixed(2)}`} /></div>
         </Card>
       )}
 
       {sub === "inventory" && <InventorySub kitchen={kitchen} setKitchen={setKitchen} shoppingList={shoppingList} setShoppingList={setShoppingList} low={low} />}
-      {sub === "recipes" && <RecipesSub recipes={recipes} setRecipes={setRecipes} kitchen={kitchen} setKitchen={setKitchen} meals={meals} setMeals={setMeals} />}
+      {sub === "recipes" && <RecipesSub recipes={recipes} setRecipes={setRecipes} kitchen={kitchen} setKitchen={setKitchen} meals={meals} setMeals={setMeals} dietTypes={dietTypes} allergies={allergies} />}
       {sub === "shopping" && <ShoppingListSub shoppingList={shoppingList} setShoppingList={setShoppingList} kitchen={kitchen} setKitchen={setKitchen} />}
     </div>
   );
 }
 
-function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals }) {
+function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals, dietTypes, allergies }) {
   const [confirmingId, setConfirmingId] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", prepTime: "", calories: "", protein: "", carbs: "", fat: "", ingredients: [{ name: "", qty: "", unit: "" }] });
+  const [form, setForm] = useState({ name: "", prepTime: "", calories: "", protein: "", carbs: "", fat: "", ingredients: [{ name: "", qty: "", unit: "" }], dietTags: [], allergens: [] });
 
   const findKitchenMatch = (ingredientName) => kitchen.find((k) => k.name.toLowerCase() === ingredientName.toLowerCase());
 
   const withAvailability = useMemo(() => {
-    return recipes.map((r) => {
-      const checked = r.ingredients.map((ing) => {
-        const match = findKitchenMatch(ing.name);
-        const have = match ? match.qty : 0;
-        return { ...ing, have, available: have >= ing.qty };
-      });
-      const missing = checked.filter((c) => !c.available);
-      return { ...r, checked, missing, canMake: missing.length === 0 };
-    }).sort((a, b) => a.missing.length - b.missing.length);
-  }, [recipes, kitchen]);
+    return recipes
+      .filter((r) => recipeMatchesDiet(r, dietTypes) && recipeMatchesAllergies(r, allergies))
+      .map((r) => {
+        const checked = r.ingredients.map((ing) => {
+          const match = findKitchenMatch(ing.name);
+          const have = match ? match.qty : 0;
+          return { ...ing, have, available: have >= ing.qty };
+        });
+        const missing = checked.filter((c) => !c.available);
+        return { ...r, checked, missing, canMake: missing.length === 0 };
+      }).sort((a, b) => a.missing.length - b.missing.length);
+  }, [recipes, kitchen, dietTypes, allergies]);
+
+  const hiddenCount = recipes.length - withAvailability.length;
 
   const cookRecipe = async (recipe) => {
     let updatedKitchen = kitchen;
@@ -975,9 +1058,10 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals 
       name: form.name.trim(), prepTime: Number(form.prepTime) || 0,
       calories: Number(form.calories) || 0, protein: Number(form.protein) || 0, carbs: Number(form.carbs) || 0, fat: Number(form.fat) || 0,
       ingredients: validIngredients.map((ing) => ({ name: ing.name.trim(), qty: Number(ing.qty) || 0, unit: ing.unit })),
+      dietTags: form.dietTags, allergens: form.allergens,
     });
     setRecipes([...recipes, row]);
-    setForm({ name: "", prepTime: "", calories: "", protein: "", carbs: "", fat: "", ingredients: [{ name: "", qty: "", unit: "" }] });
+    setForm({ name: "", prepTime: "", calories: "", protein: "", carbs: "", fat: "", ingredients: [{ name: "", qty: "", unit: "" }], dietTags: [], allergens: [] });
     setShowAdd(false);
   };
 
@@ -994,14 +1078,20 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals 
           <SectionLabel>Tonight's options — sorted by what you can already make</SectionLabel>
         </div>
         <div style={{ color: MUTED, fontSize: 11 }}>Prioritized by ingredients you already have in Kitchen.</div>
+        {hiddenCount > 0 && <div style={{ color: FAINT, fontSize: 11, marginTop: 4 }}>{hiddenCount} recipe{hiddenCount > 1 ? "s" : ""} hidden — doesn't match your food profile.</div>}
       </Card>
 
       {withAvailability.map((recipe) => (
         <Card key={recipe.id} style={{ marginBottom: 16, borderColor: recipe.canMake ? VERDI : RULE }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
             <div>
-              <div style={{ fontFamily: "Fraunces", fontSize: 17, fontWeight: 600 }}>{recipe.name}</div>
+              <div style={{ fontFamily: "Inter", fontSize: 17, fontWeight: 600 }}>{recipe.name}</div>
               <div style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>{recipe.prepTime} min</div>
+              {recipe.dietTags?.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                  {recipe.dietTags.map((t) => <span key={t} style={{ background: PANEL2, color: BRASS, borderRadius: 8, padding: "1px 7px", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.05em" }}>{t}</span>)}
+                </div>
+              )}
             </div>
             <button onClick={() => removeRecipe(recipe.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={13} /></button>
           </div>
@@ -1023,15 +1113,15 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals 
           </div>
 
           {confirmingId === recipe.id ? (
-            <div style={{ background: PANEL2, borderRadius: 4, padding: 12 }}>
+            <div style={{ background: PANEL2, borderRadius: 10, padding: 12 }}>
               <div style={{ fontSize: 12, color: MUTED, marginBottom: 10 }}>This will deduct the available ingredients above from Kitchen and log this meal to Nutrition.</div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => cookRecipe(recipe)} style={{ flex: 1, background: BRASS, border: "none", borderRadius: 4, padding: "8px", cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Make it</button>
-                <button onClick={() => setConfirmingId(null)} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: MUTED, borderRadius: 4, padding: "8px", cursor: "pointer", fontSize: 12 }}>Cancel</button>
+                <button onClick={() => cookRecipe(recipe)} style={{ flex: 1, background: BRASS, border: "none", borderRadius: 10, padding: "8px", cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Make it</button>
+                <button onClick={() => setConfirmingId(null)} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: MUTED, borderRadius: 10, padding: "8px", cursor: "pointer", fontSize: 12 }}>Cancel</button>
               </div>
             </div>
           ) : (
-            <button onClick={() => setConfirmingId(recipe.id)} style={{ width: "100%", background: recipe.canMake ? BRASS : PANEL2, color: recipe.canMake ? INK : MUTED, border: recipe.canMake ? "none" : `1px solid ${RULE}`, borderRadius: 4, padding: "8px", cursor: "pointer", fontWeight: 600, fontSize: 12 }}>
+            <button onClick={() => setConfirmingId(recipe.id)} style={{ width: "100%", background: recipe.canMake ? BRASS : PANEL2, color: recipe.canMake ? INK : MUTED, border: recipe.canMake ? "none" : `1px solid ${RULE}`, borderRadius: 10, padding: "8px", cursor: "pointer", fontWeight: 600, fontSize: 12 }}>
               {recipe.canMake ? "Cook this" : `Missing ${recipe.missing.length} ingredient${recipe.missing.length > 1 ? "s" : ""}`}
             </button>
           )}
@@ -1062,10 +1152,23 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals 
               <button onClick={() => removeIngredientRow(i)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer" }}><Trash2 size={13} /></button>
             </div>
           ))}
-          <button onClick={addIngredientRow} style={{ background: "transparent", border: `1px dashed ${RULE}`, color: MUTED, borderRadius: 4, padding: "6px 12px", cursor: "pointer", fontSize: 12, marginBottom: 12 }}>+ Add ingredient</button>
+          <button onClick={addIngredientRow} style={{ background: "transparent", border: `1px dashed ${RULE}`, color: MUTED, borderRadius: 10, padding: "6px 12px", cursor: "pointer", fontSize: 12, marginBottom: 12 }}>+ Add ingredient</button>
+
+          <SectionLabel>Tags (used to match diet preferences)</SectionLabel>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+            {["vegetarian", "vegan", "meat", "fish", "shellfish", "dairy", "eggs", "gluten"].map((t) => (
+              <button key={t} onClick={() => setForm({ ...form, dietTags: form.dietTags.includes(t) ? form.dietTags.filter((x) => x !== t) : [...form.dietTags, t] })} style={{ background: form.dietTags.includes(t) ? BRASS : "transparent", color: form.dietTags.includes(t) ? INK : MUTED, border: `1px solid ${form.dietTags.includes(t) ? BRASS : RULE}`, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>{t}</button>
+            ))}
+          </div>
+          <SectionLabel>Allergens present</SectionLabel>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+            {COMMON_ALLERGENS.map((a) => (
+              <button key={a} onClick={() => setForm({ ...form, allergens: form.allergens.includes(a) ? form.allergens.filter((x) => x !== a) : [...form.allergens, a] })} style={{ background: form.allergens.includes(a) ? RUST : "transparent", color: form.allergens.includes(a) ? PAPER : MUTED, border: `1px solid ${form.allergens.includes(a) ? RUST : RULE}`, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>{a}</button>
+            ))}
+          </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={saveRecipe} style={{ flex: 1, background: BRASS, border: "none", borderRadius: 4, padding: "10px", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Save recipe</button>
-            <button onClick={() => setShowAdd(false)} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: MUTED, borderRadius: 4, padding: "10px", cursor: "pointer", fontSize: 13 }}>Cancel</button>
+            <button onClick={saveRecipe} style={{ flex: 1, background: BRASS, border: "none", borderRadius: 10, padding: "10px", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Save recipe</button>
+            <button onClick={() => setShowAdd(false)} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: MUTED, borderRadius: 10, padding: "10px", cursor: "pointer", fontSize: 13 }}>Cancel</button>
           </div>
         </Card>
       ) : (
@@ -1149,7 +1252,7 @@ function InventorySub({ kitchen, setKitchen, shoppingList, setShoppingList, low 
             {KITCHEN_UNITS.map((u) => <option key={u} value={u}>{u || "—"}</option>)}
           </select>
           <input placeholder="Low at" type="number" value={form.threshold} onChange={(e) => setForm({ ...form, threshold: e.target.value })} style={inputStyle} />
-          <button onClick={addItem} style={{ background: BRASS, border: "none", borderRadius: 4, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <button onClick={addItem} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
         </div>
       </Card>
 
@@ -1161,9 +1264,9 @@ function InventorySub({ kitchen, setKitchen, shoppingList, setShoppingList, low 
             return (
               <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${RULE}` }}>
                 <div style={{ flex: 1, fontSize: 13 }}>{item.name}</div>
-                <button onClick={() => adjustQty(item, -1)} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 4, width: 26, height: 26, cursor: "pointer" }}>–</button>
+                <button onClick={() => adjustQty(item, -1)} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, width: 26, height: 26, cursor: "pointer" }}>–</button>
                 <span style={{ fontFamily: "IBM Plex Mono", width: 50, textAlign: "center", fontSize: 12 }}><LedgerNum value={`${item.qty}${item.unit}`} positive={!isLow} /></span>
-                <button onClick={() => adjustQty(item, 1)} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 4, width: 26, height: 26, cursor: "pointer" }}>+</button>
+                <button onClick={() => adjustQty(item, 1)} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, width: 26, height: 26, cursor: "pointer" }}>+</button>
                 <button onClick={() => removeItem(item.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={13} /></button>
               </div>
             );
@@ -1225,7 +1328,7 @@ function ShoppingListSub({ shoppingList, setShoppingList, kitchen, setKitchen })
           <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={inputStyle}>
             {KITCHEN_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <button onClick={addItem} style={{ background: BRASS, border: "none", borderRadius: 4, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <button onClick={addItem} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
         </div>
       </Card>
 
@@ -1234,7 +1337,7 @@ function ShoppingListSub({ shoppingList, setShoppingList, kitchen, setKitchen })
           <SectionLabel><span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: colorFor(cat), display: "inline-block" }} />{cat}</span></SectionLabel>
           {catItems.map((item) => (
             <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${RULE}` }}>
-              <button onClick={() => togglePurchased(item)} style={{ width: 20, height: 20, borderRadius: 4, border: `1px solid ${MUTED}`, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }} />
+              <button onClick={() => togglePurchased(item)} style={{ width: 20, height: 20, borderRadius: 10, border: `1px solid ${MUTED}`, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }} />
               <span style={{ flex: 1, fontSize: 13 }}>{item.name}</span>
               {item.fromLowStock && <span style={{ fontSize: 10, color: RUST, fontFamily: "IBM Plex Mono" }}>low stock</span>}
               <button onClick={() => removeItem(item.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={13} /></button>
@@ -1252,7 +1355,7 @@ function ShoppingListSub({ shoppingList, setShoppingList, kitchen, setKitchen })
           </div>
           {purchasedRecently.map((item) => (
             <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", fontSize: 12, color: MUTED, textDecoration: "line-through" }}>
-              <button onClick={() => togglePurchased(item)} style={{ width: 16, height: 16, borderRadius: 4, border: `1px solid ${BRASS}`, background: BRASS, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+              <button onClick={() => togglePurchased(item)} style={{ width: 16, height: 16, borderRadius: 10, border: `1px solid ${BRASS}`, background: BRASS, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
                 <Check size={11} color={INK} strokeWidth={3} />
               </button>
               <span style={{ flex: 1 }}>{item.name}</span>
@@ -1304,7 +1407,7 @@ function SpendingSub({ spending, setSpending }) {
           <input placeholder="Merchant / item" value={form.merchant} onChange={(e) => setForm({ ...form, merchant: e.target.value })} style={inputStyle} />
           <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={inputStyle}>{SPENDING_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
           <input placeholder="$ amount" type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} style={inputStyle} />
-          <button onClick={addEntry} style={{ background: BRASS, border: "none", borderRadius: 4, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <button onClick={addEntry} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
         </div>
       </Card>
       <Card style={{ marginBottom: 16 }}>
@@ -1363,7 +1466,7 @@ function AccountsSub({ accounts, setAccounts }) {
     <div>
       <Card style={{ marginBottom: 16 }}>
         <SectionLabel>Net worth</SectionLabel>
-        <div style={{ fontFamily: "Fraunces", fontSize: 30, fontWeight: 600 }}><LedgerNum value={`$${total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} positive={total >= 0} /></div>
+        <div style={{ fontFamily: "Inter", fontSize: 30, fontWeight: 600 }}><LedgerNum value={`$${total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} positive={total >= 0} /></div>
         <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>across {accounts.length} account{accounts.length !== 1 ? "s" : ""}</div>
       </Card>
       <Card style={{ marginBottom: 16 }}>
@@ -1372,7 +1475,7 @@ function AccountsSub({ accounts, setAccounts }) {
           <input placeholder="e.g. Wealthsimple TFSA" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inputStyle} />
           <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} style={inputStyle}>{types.map((t) => <option key={t} value={t}>{t}</option>)}</select>
           <input placeholder="Balance" type="number" value={form.balance} onChange={(e) => setForm({ ...form, balance: e.target.value })} style={inputStyle} />
-          <button onClick={addAccount} style={{ background: BRASS, border: "none", borderRadius: 4, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <button onClick={addAccount} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
         </div>
       </Card>
       <Card>
@@ -1423,7 +1526,7 @@ function InvestSub({ holdings, setHoldings }) {
           <SectionLabel>Portfolio value</SectionLabel>
           <button onClick={refreshPrices} disabled={refreshing} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 12, color: MUTED, fontSize: 11, padding: "3px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}><RefreshCw size={11} className={refreshing ? "animate-spin" : ""} /> refresh</button>
         </div>
-        <div style={{ fontFamily: "Fraunces", fontSize: 30, fontWeight: 600 }}><LedgerNum value={`$${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} /></div>
+        <div style={{ fontFamily: "Inter", fontSize: 30, fontWeight: 600 }}><LedgerNum value={`$${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} /></div>
         <div style={{ fontSize: 12, marginTop: 4 }}><LedgerNum value={`${gain >= 0 ? "+" : ""}$${gain.toFixed(2)}`} positive={gain >= 0} /> <span style={{ color: MUTED }}>vs cost basis</span></div>
       </Card>
       <Card style={{ marginBottom: 16 }}>
@@ -1433,7 +1536,7 @@ function InvestSub({ holdings, setHoldings }) {
           <input placeholder="Shares" type="number" value={form.shares} onChange={(e) => setForm({ ...form, shares: e.target.value })} style={inputStyle} />
           <input placeholder="Avg cost" type="number" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} style={inputStyle} />
           <input placeholder="Account (TFSA)" value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })} style={inputStyle} />
-          <button onClick={addHolding} style={{ background: BRASS, border: "none", borderRadius: 4, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <button onClick={addHolding} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
         </div>
         <div style={{ color: MUTED, fontSize: 11, marginTop: 8 }}>Tip: Canadian TSX tickers need ".TO" (e.g. XEQT.TO, VFV.TO).</div>
       </Card>
@@ -1471,8 +1574,8 @@ function ResearchSub({ research, setResearch }) {
       <Card style={{ marginBottom: 16 }}>
         <SectionLabel>New research note</SectionLabel>
         <input placeholder="Ticker (e.g. QQC.TO)" value={form.ticker} onChange={(e) => setForm({ ...form, ticker: e.target.value })} style={{ ...inputStyle, marginBottom: 8 }} />
-        <textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Thesis, valuation notes, risks, catalysts…" rows={3} style={{ width: "100%", background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 4, padding: 10, fontSize: 13, outline: "none", resize: "vertical", boxSizing: "border-box", marginBottom: 8 }} />
-        <button onClick={addNote} style={{ background: BRASS, border: "none", borderRadius: 4, padding: "8px 16px", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Save note</button>
+        <textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Thesis, valuation notes, risks, catalysts…" rows={3} style={{ width: "100%", background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: 10, fontSize: 13, outline: "none", resize: "vertical", boxSizing: "border-box", marginBottom: 8 }} />
+        <button onClick={addNote} style={{ background: BRASS, border: "none", borderRadius: 10, padding: "8px 16px", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Save note</button>
       </Card>
       {Object.entries(byTicker).map(([ticker, notes]) => (
         <Card key={ticker} style={{ marginBottom: 16 }}>
@@ -1496,10 +1599,14 @@ function ResearchSub({ research, setResearch }) {
 function AssistantTab({ chat, setChat, context, apiKey }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef(null);
+  const voiceSupported = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
 
-  const send = async () => {
-    if (!input.trim() || loading || !apiKey) return;
-    const userMsg = { role: "user", content: input.trim() };
+  const send = async (overrideText) => {
+    const text = (overrideText ?? input).trim();
+    if (!text || loading || !apiKey) return;
+    const userMsg = { role: "user", content: text };
     setChat((c) => [...c, userMsg]);
     await db.insertRow("chat_messages", userMsg);
     setInput("");
@@ -1515,11 +1622,38 @@ function AssistantTab({ chat, setChat, context, apiKey }) {
     setLoading(false);
   };
 
+  const toggleListening = () => {
+    if (!voiceSupported) return;
+    if (listening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const rec = new Recognition();
+    rec.lang = "en-US";
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    rec.onstart = () => setListening(true);
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    rec.onresult = (e) => {
+      const transcript = e.results[0][0].transcript;
+      setInput(transcript);
+      send(transcript);
+    };
+    recognitionRef.current = rec;
+    rec.start();
+  };
+
+  const suggestions = ["What should I eat?", "What do I need to buy?", "How did I spend this month?", "Plan my day", "What workout should I do?"];
+
   if (!apiKey) {
     return (
       <Card style={{ textAlign: "center", padding: 40 }}>
+        <Sparkles size={22} color="#8B7FA6" style={{ marginBottom: 12 }} />
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Ledger AI</div>
         <div style={{ color: MUTED, fontSize: 13, lineHeight: 1.6 }}>
-          Add your Anthropic API key in <strong style={{ color: PAPER }}>settings</strong> (top right) to turn on the assistant.
+          Add your Anthropic API key in <strong style={{ color: PAPER }}>settings</strong> (top right) to turn this on.
           It's free to create a key at console.anthropic.com — just set a small spend cap once you're there.
         </div>
       </Card>
@@ -1527,19 +1661,37 @@ function AssistantTab({ chat, setChat, context, apiKey }) {
   }
 
   return (
-    <Card style={{ display: "flex", flexDirection: "column", height: 480, padding: 0, overflow: "hidden" }}>
+    <Card style={{ display: "flex", flexDirection: "column", height: 520, padding: 0, overflow: "hidden" }}>
+      <div style={{ padding: "14px 16px", borderBottom: `1px solid ${RULE}`, display: "flex", alignItems: "center", gap: 8 }}>
+        <Sparkles size={15} color="#8B7FA6" />
+        <div style={{ fontSize: 14, fontWeight: 600 }}>Ledger AI</div>
+      </div>
       <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-        {chat.length === 0 && <div style={{ color: MUTED, fontSize: 13, textAlign: "center", marginTop: 40 }}>Ask about today's balance, get a nudge, or talk through your day.</div>}
+        {chat.length === 0 && (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ color: MUTED, fontSize: 13, textAlign: "center", marginBottom: 16 }}>Your personal command center.</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
+              {suggestions.map((s) => (
+                <button key={s} onClick={() => send(s)} style={{ background: CARD_ELEVATED, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 16, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>{s}</button>
+              ))}
+            </div>
+          </div>
+        )}
         {chat.map((m, i) => (
           <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", marginBottom: 10 }}>
-            <div style={{ maxWidth: "80%", padding: "8px 12px", borderRadius: 10, fontSize: 13, lineHeight: 1.5, background: m.role === "user" ? BRASS : PANEL2, color: m.role === "user" ? INK : PAPER, border: m.role === "user" ? "none" : `1px solid ${RULE}` }}>{m.content}</div>
+            <div style={{ maxWidth: "80%", padding: "8px 12px", borderRadius: 12, fontSize: 13, lineHeight: 1.5, background: m.role === "user" ? BRASS : PANEL2, color: m.role === "user" ? INK : PAPER, border: m.role === "user" ? "none" : `1px solid ${RULE}` }}>{m.content}</div>
           </div>
         ))}
         {loading && <Loader2 className="animate-spin" size={16} color={MUTED} />}
       </div>
       <div style={{ display: "flex", gap: 8, padding: 12, borderTop: `1px solid ${RULE}` }}>
-        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="Message your ledger…" style={{ flex: 1, background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 4, padding: "10px 12px", fontSize: 13, outline: "none" }} />
-        <button onClick={send} disabled={loading} style={{ background: BRASS, border: "none", borderRadius: 4, padding: "0 14px", cursor: "pointer" }}><Send size={15} color={INK} /></button>
+        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder={listening ? "Listening…" : "Message your ledger…"} style={{ flex: 1, background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "10px 12px", fontSize: 13, outline: "none" }} />
+        {voiceSupported && (
+          <button onClick={toggleListening} style={{ background: listening ? RUST : PANEL2, border: `1px solid ${RULE}`, borderRadius: 10, padding: "0 12px", cursor: "pointer", display: "flex", alignItems: "center" }}>
+            <Mic size={15} color={listening ? PAPER : MUTED} />
+          </button>
+        )}
+        <button onClick={() => send()} disabled={loading} style={{ background: BRASS, border: "none", borderRadius: 10, padding: "0 14px", cursor: "pointer" }}><Send size={15} color={INK} /></button>
       </div>
     </Card>
   );
