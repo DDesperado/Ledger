@@ -6,7 +6,7 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import * as db from "../lib/store";
 import { getSetting, setSetting, exportAll, importAll } from "../lib/store";
-import { INK, PANEL, PANEL2, RULE, PAPER, MUTED, BRASS, VERDI, RUST, inputStyle, uid, todayStr, fmtDate, fetchQuote } from "../lib/theme";
+import { INK, PANEL, PANEL2, RULE, PAPER, MUTED, BRASS, VERDI, RUST, inputStyle, uid, todayStr, fmtDate, fetchQuote, colorFor } from "../lib/theme";
 
 const DEFAULT_ITEMS = [
   { category: "Morning", label: "Clear inbox & plan the day" },
@@ -48,7 +48,13 @@ function SectionLabel({ children }) {
 
 function Card({ children, style }) {
   return (
-    <div style={{ background: PANEL, border: `1px solid ${RULE}`, borderRadius: 4, padding: 20, backgroundImage: `repeating-linear-gradient(${PANEL}, ${PANEL} 27px, ${RULE} 28px)`, ...style }}>
+    <div style={{
+      background: PANEL, border: `1px solid ${RULE}`, borderRadius: 6, padding: 20,
+      backgroundImage: `repeating-linear-gradient(${PANEL}, ${PANEL} 27px, ${RULE} 28px)`,
+      boxShadow: "0 1px 2px rgba(0,0,0,0.25), 0 8px 24px -12px rgba(0,0,0,0.4)",
+      transition: "box-shadow 0.2s ease, transform 0.2s ease",
+      ...style,
+    }}>
       {children}
     </div>
   );
@@ -277,6 +283,7 @@ export default function Dashboard() {
                 display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none",
                 borderBottom: active ? `2px solid ${BRASS}` : "2px solid transparent",
                 color: active ? PAPER : MUTED, padding: "10px 12px", cursor: "pointer", fontWeight: 500, fontSize: 13, whiteSpace: "nowrap",
+                transition: "color 0.15s ease, border-color 0.15s ease",
               }}><Icon size={14} /> {t.label}</button>
             );
           })}
@@ -337,7 +344,7 @@ function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, 
             const done = doneToday.includes(item.id);
             return (
               <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${RULE}` }}>
-                <button onClick={() => toggleItem(item.id)} style={{ width: 20, height: 20, borderRadius: 4, border: `1px solid ${done ? BRASS : MUTED}`, background: done ? BRASS : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                <button onClick={() => toggleItem(item.id)} style={{ width: 20, height: 20, borderRadius: 4, border: `1px solid ${done ? BRASS : MUTED}`, background: done ? BRASS : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, transition: "all 0.15s ease" }}>
                   {done && <Check size={13} color={INK} strokeWidth={3} />}
                 </button>
                 <span style={{ flex: 1, fontSize: 14, textDecoration: done ? "line-through" : "none", color: done ? MUTED : PAPER }}>{item.label}</span>
@@ -467,13 +474,17 @@ function NutritionTab({ targets, setTargets, meals, setMeals }) {
         )}
         {rows.map((r) => {
           const actual = totals[r.k], target = targets[r.k] || 1, pct = Math.min(100, (actual / target) * 100), over = actual > target;
+          const hue = colorFor(r.k);
           return (
             <div key={r.k} style={{ marginBottom: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                <span style={{ color: MUTED }}>{r.label}</span>
+                <span style={{ color: MUTED, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: hue, display: "inline-block" }} />
+                  {r.label}
+                </span>
                 <span><LedgerNum value={actual} positive={!over} /> <span style={{ color: MUTED }}>/ {target}{r.unit}</span></span>
               </div>
-              <div style={{ height: 5, background: RULE, borderRadius: 3, overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: over ? RUST : BRASS }} /></div>
+              <div style={{ height: 5, background: RULE, borderRadius: 3, overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: over ? RUST : hue, transition: "width 0.3s ease" }} /></div>
             </div>
           );
         })}
@@ -524,7 +535,7 @@ function ReflectTab({ reflections, setReflections }) {
         <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="What happened today? What's on your mind?" rows={4} style={{ width: "100%", background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 4, padding: 10, fontSize: 14, outline: "none", resize: "vertical", boxSizing: "border-box" }} />
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
           <div style={{ display: "flex", gap: 6 }}>
-            {moods.map((m) => <button key={m} onClick={() => setMood(m)} style={{ background: mood === m ? BRASS : "transparent", color: mood === m ? INK : MUTED, border: `1px solid ${mood === m ? BRASS : RULE}`, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>{m}</button>)}
+            {moods.map((m) => <button key={m} onClick={() => setMood(m)} style={{ background: mood === m ? colorFor(m) : "transparent", color: mood === m ? INK : MUTED, border: `1px solid ${mood === m ? colorFor(m) : RULE}`, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer", transition: "all 0.15s ease" }}>{m}</button>)}
           </div>
           <button onClick={addEntry} style={{ background: BRASS, border: "none", borderRadius: 4, padding: "8px 16px", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Save</button>
         </div>
@@ -532,7 +543,7 @@ function ReflectTab({ reflections, setReflections }) {
       {reflections.map((r) => (
         <Card key={r.id} style={{ marginBottom: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            <span style={{ fontFamily: "IBM Plex Mono", fontSize: 11, color: MUTED }}>{fmtDate(r.date)} · {r.mood}</span>
+            <span style={{ fontFamily: "IBM Plex Mono", fontSize: 11, color: MUTED }}>{fmtDate(r.date)} · <span style={{ color: colorFor(r.mood) }}>{r.mood}</span></span>
             <button onClick={() => removeEntry(r.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={12} /></button>
           </div>
           <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{r.text}</div>
@@ -591,8 +602,14 @@ function SpendingSub({ spending, setSpending }) {
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 10 }}><span style={{ color: MUTED }}>Spent today</span><LedgerNum value={`$${todayTotal.toFixed(2)}`} /></div>
         {byCategory.map(([cat, amt]) => (
           <div key={cat} style={{ marginBottom: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}><span style={{ color: MUTED }}>{cat}</span><span style={{ fontFamily: "IBM Plex Mono" }}>${amt.toFixed(2)}</span></div>
-            <div style={{ height: 4, background: RULE, borderRadius: 3 }}><div style={{ width: `${total ? (amt / total) * 100 : 0}%`, height: "100%", background: BRASS, borderRadius: 3 }} /></div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
+              <span style={{ color: MUTED, display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: colorFor(cat), display: "inline-block" }} />
+                {cat}
+              </span>
+              <span style={{ fontFamily: "IBM Plex Mono" }}>${amt.toFixed(2)}</span>
+            </div>
+            <div style={{ height: 4, background: RULE, borderRadius: 3 }}><div style={{ width: `${total ? (amt / total) * 100 : 0}%`, height: "100%", background: colorFor(cat), borderRadius: 3, transition: "width 0.3s ease" }} /></div>
           </div>
         ))}
         {byCategory.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>No spending logged yet.</div>}
@@ -603,7 +620,10 @@ function SpendingSub({ spending, setSpending }) {
           <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${RULE}`, fontSize: 13 }}>
             <span style={{ color: MUTED, fontFamily: "IBM Plex Mono", fontSize: 11, width: 54 }}>{fmtDate(s.date)}</span>
             <span style={{ flex: 1 }}>{s.merchant}</span>
-            <span style={{ color: MUTED, fontSize: 11 }}>{s.category}</span>
+            <span style={{ color: colorFor(s.category), fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: colorFor(s.category), display: "inline-block" }} />
+              {s.category}
+            </span>
             <span style={{ fontFamily: "IBM Plex Mono", width: 64, textAlign: "right" }}>${s.amount.toFixed(2)}</span>
             <button onClick={() => removeEntry(s.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={12} /></button>
           </div>
@@ -649,7 +669,7 @@ function AccountsSub({ accounts, setAccounts }) {
         <SectionLabel>Accounts</SectionLabel>
         {accounts.map((a) => (
           <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${RULE}` }}>
-            <div style={{ flex: 1 }}><div style={{ fontSize: 13 }}>{a.name}</div><div style={{ fontSize: 11, color: MUTED }}>{a.type} · updated {fmtDate(a.updated_date)}</div></div>
+            <div style={{ flex: 1 }}><div style={{ fontSize: 13 }}>{a.name}</div><div style={{ fontSize: 11, color: MUTED, display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: colorFor(a.type), display: "inline-block" }} /><span style={{ color: colorFor(a.type) }}>{a.type}</span> · updated {fmtDate(a.updated_date)}</div></div>
             <input type="number" value={a.balance} onChange={(e) => updateBalance(a.id, e.target.value)} style={{ ...inputStyle, width: 110, textAlign: "right", fontFamily: "IBM Plex Mono" }} />
             <button onClick={() => removeAccount(a.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={13} /></button>
           </div>

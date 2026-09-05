@@ -8,6 +8,16 @@ export const BRASS = "#C9A227";
 export const VERDI = "#4FA69C";
 export const RUST = "#C1543C";
 
+// A curated palette that stays in the ledger's tonal family — used to
+// color-code categories, macros, moods, and account types consistently.
+export const PALETTE = ["#C9A227", "#4FA69C", "#C1543C", "#6C93B8", "#9B6B9E", "#8A9A5B", "#D98255", "#7C8CA6"];
+
+export function colorFor(key) {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return PALETTE[hash % PALETTE.length];
+}
+
 export const inputStyle = {
   background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 4, padding: "8px 10px",
   fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box", fontFamily: "Inter",
