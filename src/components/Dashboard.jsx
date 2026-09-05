@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import {
   Check, Plus, Trash2, Send, Dumbbell, UtensilsCrossed, NotebookPen,
   Sparkles, ListChecks, Loader2, Wallet, ShoppingCart, Landmark, TrendingUp, BookOpen, RefreshCw, Settings, Download, Upload,
-  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2, X, Bell, Mic,
+  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2, X, Bell, Mic, Volume2, VolumeX,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import * as db from "../lib/store";
@@ -230,6 +230,7 @@ export default function Dashboard() {
 
   const [items, setItems] = useState([]);
   const [doneToday, setDoneToday] = useState([]);
+  const [allCompletions, setAllCompletions] = useState([]);
   const [workouts, setWorkouts] = useState([]);
   const [targets, setTargets] = useState({ calories: 2200, protein: 150, carbs: 220, fat: 70 });
   const [meals, setMeals] = useState([]);
@@ -264,6 +265,7 @@ export default function Dashboard() {
       }
       setItems(it);
       setDoneToday(await db.fetchCompletionsForDate(todayStr()));
+      setAllCompletions(await db.fetchTable("checklist_completions"));
       setWorkouts(await db.fetchTable("workouts"));
       const t = await db.fetchNutritionTargets();
       if (t) setTargets(t);
@@ -295,6 +297,23 @@ export default function Dashboard() {
   const categories = useMemo(() => [...new Set(items.map((i) => i.category))], [items]);
 
   const lowStockItems = useMemo(() => kitchen.filter((k) => k.qty <= k.threshold), [kitchen]);
+
+  const streak = useMemo(() => {
+    if (items.length === 0) return 0;
+    const byDate = {};
+    for (const c of allCompletions) (byDate[c.date] = byDate[c.date] || new Set()).add(c.item_id);
+    let count = 0;
+    let d = new Date();
+    // Only count today if it's already fully complete; otherwise start from yesterday.
+    if (!((byDate[todayStr()]?.size || 0) >= items.length)) d.setDate(d.getDate() - 1);
+    while (true) {
+      const key = d.toISOString().slice(0, 10);
+      if ((byDate[key]?.size || 0) >= items.length) { count++; d.setDate(d.getDate() - 1); }
+      else break;
+      if (count > 365) break;
+    }
+    return count;
+  }, [allCompletions, items.length]);
   const alerts = useMemo(() => {
     const list = [];
     const today = todayStr();
@@ -646,13 +665,13 @@ export default function Dashboard() {
         <div className="ledger-page-content">
 
         {tab === "today" && (
-          <TodayTab items={items} categories={categories} doneToday={doneToday} percent={percent} toggleItem={toggleItem} addItem={addItem} removeItem={removeItem} targets={targets} meals={meals} alerts={alerts} onOpenReminders={() => setShowReminders(true)} workouts={workouts} />
+          <TodayTab items={items} categories={categories} doneToday={doneToday} percent={percent} toggleItem={toggleItem} addItem={addItem} removeItem={removeItem} targets={targets} meals={meals} alerts={alerts} onOpenReminders={() => setShowReminders(true)} workouts={workouts} streak={streak} />
         )}
         {tab === "workout" && <WorkoutTab workouts={workouts} setWorkouts={setWorkouts} />}
         {tab === "nutrition" && <NutritionTab targets={targets} setTargets={setTargets} meals={meals} setMeals={setMeals} />}
         {tab === "reflect" && <ReflectTab reflections={reflections} setReflections={setReflections} />}
         {tab === "finance" && (
-          <FinanceTab spending={spending} setSpending={setSpending} accounts={accounts} setAccounts={setAccounts} holdings={holdings} setHoldings={setHoldings} research={research} setResearch={setResearch} />
+          <FinanceTab spending={spending} setSpending={setSpending} accounts={accounts} setAccounts={setAccounts} holdings={holdings} setHoldings={setHoldings} research={research} setResearch={setResearch} kitchen={kitchen} setKitchen={setKitchen} />
         )}
         {tab === "kitchen" && (
           <KitchenTab
@@ -885,7 +904,7 @@ function Onboarding({ onFinish, setTargets, requestNotifications, dietTypes, tog
   );
 }
 
-function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, removeItem, targets, meals, alerts, onOpenReminders, workouts }) {
+function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, removeItem, targets, meals, alerts, onOpenReminders, workouts, streak }) {
   const [newLabel, setNewLabel] = useState("");
   const [newCat, setNewCat] = useState(categories[0] || "General");
 
@@ -910,6 +929,11 @@ function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, 
       )}
       <Card style={{ marginBottom: 16 }}>
         <ProgressBar done={doneToday.length} total={items.length} />
+        {streak > 0 && (
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${RULE}`, display: "flex", alignItems: "center", gap: 6, color: BRASS, fontSize: 12, fontWeight: 600 }}>
+            🔥 {streak} day{streak !== 1 ? "s" : ""} at 100%
+          </div>
+        )}
       </Card>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
@@ -1199,7 +1223,7 @@ function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList, recipe
 
       {sub === "inventory" && <InventorySub kitchen={kitchen} setKitchen={setKitchen} shoppingList={shoppingList} setShoppingList={setShoppingList} low={low} />}
       {sub === "recipes" && <RecipesSub recipes={recipes} setRecipes={setRecipes} kitchen={kitchen} setKitchen={setKitchen} meals={meals} setMeals={setMeals} dietTypes={dietTypes} allergies={allergies} />}
-      {sub === "shopping" && <ShoppingListSub shoppingList={shoppingList} setShoppingList={setShoppingList} kitchen={kitchen} setKitchen={setKitchen} />}
+      {sub === "shopping" && <ShoppingListSub shoppingList={shoppingList} setShoppingList={setShoppingList} kitchen={kitchen} setKitchen={setKitchen} dietTypes={dietTypes} allergies={allergies} />}
     </div>
   );
 }
@@ -1212,6 +1236,13 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
   const findKitchenMatch = (ingredientName) => kitchen.find((k) => k.name.toLowerCase() === ingredientName.toLowerCase());
 
   const withAvailability = useMemo(() => {
+    const today = todayStr();
+    const usesExpiring = (checked) => checked.some((c) => {
+      const match = findKitchenMatch(c.name);
+      if (!match?.expiryDate) return false;
+      const days = (new Date(match.expiryDate) - new Date(today)) / 86400000;
+      return days >= 0 && days <= 3;
+    });
     return recipes
       .filter((r) => recipeMatchesDiet(r, dietTypes) && recipeMatchesAllergies(r, allergies))
       .map((r) => {
@@ -1221,8 +1252,11 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
           return { ...ing, have, available: have >= ing.qty };
         });
         const missing = checked.filter((c) => !c.available);
-        return { ...r, checked, missing, canMake: missing.length === 0 };
-      }).sort((a, b) => a.missing.length - b.missing.length);
+        return { ...r, checked, missing, canMake: missing.length === 0, usesExpiring: usesExpiring(checked) };
+      }).sort((a, b) => {
+        if (a.usesExpiring !== b.usesExpiring) return a.usesExpiring ? -1 : 1;
+        return a.missing.length - b.missing.length;
+      });
   }, [recipes, kitchen, dietTypes, allergies]);
 
   const hiddenCount = recipes.length - withAvailability.length;
@@ -1289,6 +1323,7 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
             <div>
               <div style={{ fontFamily: "Inter", fontSize: 17, fontWeight: 600 }}>{recipe.name}</div>
               <div style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>{recipe.prepTime} min</div>
+              {recipe.usesExpiring && <div style={{ color: WARNING, fontSize: 10, marginTop: 4 }}>Uses something expiring soon</div>}
               {recipe.dietTags?.length > 0 && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
                   {recipe.dietTags.map((t) => <span key={t} style={{ background: PANEL2, color: BRASS, borderRadius: 8, padding: "1px 7px", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.05em" }}>{t}</span>)}
@@ -1383,16 +1418,16 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
 }
 
 function InventorySub({ kitchen, setKitchen, shoppingList, setShoppingList, low }) {
-  const [form, setForm] = useState({ name: "", category: KITCHEN_CATEGORIES[0], qty: "", unit: "", threshold: "" });
+  const [form, setForm] = useState({ name: "", category: KITCHEN_CATEGORIES[0], qty: "", unit: "", threshold: "", expiryDate: "" });
 
   const addItem = async () => {
     if (!form.name.trim()) return;
     const row = await db.insertRow("kitchen", {
       name: form.name.trim(), category: form.category, qty: Number(form.qty) || 0,
-      unit: form.unit, threshold: Number(form.threshold) || 1,
+      unit: form.unit, threshold: Number(form.threshold) || 1, expiryDate: form.expiryDate || null,
     });
     setKitchen([...kitchen, row]);
-    setForm({ name: "", category: form.category, qty: "", unit: form.unit, threshold: "" });
+    setForm({ name: "", category: form.category, qty: "", unit: form.unit, threshold: "", expiryDate: "" });
   };
 
   const adjustQty = async (item, delta) => {
@@ -1423,8 +1458,25 @@ function InventorySub({ kitchen, setKitchen, shoppingList, setShoppingList, low 
     return map;
   }, [kitchen]);
 
+  const expiringSoon = kitchen.filter((k) => {
+    if (!k.expiryDate) return false;
+    const days = (new Date(k.expiryDate) - new Date(todayStr())) / 86400000;
+    return days >= 0 && days <= 3;
+  });
+
   return (
     <div>
+      {expiringSoon.length > 0 && (
+        <Card style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <AlertTriangle size={14} color={WARNING} />
+            <SectionLabel>Expiring soon</SectionLabel>
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.8 }}>
+            {expiringSoon.map((k) => <div key={k.id}>{k.name} <span style={{ color: MUTED }}>— {fmtDate(k.expiryDate)}</span></div>)}
+          </div>
+        </Card>
+      )}
       {low.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -1444,7 +1496,7 @@ function InventorySub({ kitchen, setKitchen, shoppingList, setShoppingList, low 
 
       <Card style={{ marginBottom: 16 }}>
         <SectionLabel>Add a kitchen item</SectionLabel>
-        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 0.8fr 0.7fr 0.8fr auto", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 0.8fr 0.7fr", gap: 8, marginBottom: 8 }}>
           <input placeholder="e.g. Eggs" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inputStyle} />
           <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={inputStyle}>
             {KITCHEN_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -1453,8 +1505,11 @@ function InventorySub({ kitchen, setKitchen, shoppingList, setShoppingList, low 
           <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} style={inputStyle}>
             {KITCHEN_UNITS.map((u) => <option key={u} value={u}>{u || "—"}</option>)}
           </select>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8 }}>
           <input placeholder="Low at" type="number" value={form.threshold} onChange={(e) => setForm({ ...form, threshold: e.target.value })} style={inputStyle} />
-          <button onClick={addItem} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <input type="date" value={form.expiryDate} onChange={(e) => setForm({ ...form, expiryDate: e.target.value })} style={inputStyle} title="Expiry date (optional)" />
+          <button onClick={addItem} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer", padding: "0 16px" }}><Plus size={16} color={INK} /></button>
         </div>
       </Card>
 
@@ -1480,14 +1535,40 @@ function InventorySub({ kitchen, setKitchen, shoppingList, setShoppingList, low 
   );
 }
 
-function ShoppingListSub({ shoppingList, setShoppingList, kitchen, setKitchen }) {
-  const [form, setForm] = useState({ name: "", category: KITCHEN_CATEGORIES[0] });
+const DIET_CONFLICT_KEYWORDS = {
+  Vegan: [["milk", "dairy"], ["cheese"], ["egg"], ["chicken", "beef", "pork", "meat", "bacon"], ["fish", "shrimp", "salmon"], ["yogurt"], ["butter"]],
+  Vegetarian: [["chicken", "beef", "pork", "meat", "bacon"], ["fish", "shrimp", "salmon"]],
+  "Dairy-free": [["milk"], ["cheese"], ["yogurt"], ["butter", "cream"]],
+  "Lactose-free": [["milk"], ["cheese"], ["yogurt"], ["cream"]],
+};
 
-  const addItem = async () => {
-    if (!form.name.trim()) return;
-    const row = await db.insertRow("shopping_list", { name: form.name.trim(), category: form.category, purchased: false });
+function findDietConflict(itemName, dietTypes) {
+  const lower = itemName.toLowerCase();
+  for (const diet of dietTypes || []) {
+    const groups = DIET_CONFLICT_KEYWORDS[diet];
+    if (!groups) continue;
+    for (const group of groups) {
+      if (group.some((kw) => lower.includes(kw))) return diet;
+    }
+  }
+  return null;
+}
+
+function ShoppingListSub({ shoppingList, setShoppingList, kitchen, setKitchen, dietTypes, allergies }) {
+  const [form, setForm] = useState({ name: "", category: KITCHEN_CATEGORIES[0] });
+  const [conflictWarning, setConflictWarning] = useState(null);
+
+  const addItem = async (override) => {
+    const name = (override?.name ?? form.name).trim();
+    if (!name) return;
+    if (!override) {
+      const conflict = findDietConflict(name, dietTypes);
+      if (conflict) { setConflictWarning({ name, category: form.category, diet: conflict }); return; }
+    }
+    const row = await db.insertRow("shopping_list", { name, category: override?.category ?? form.category, purchased: false });
     setShoppingList([row, ...shoppingList]);
     setForm({ name: "", category: form.category });
+    setConflictWarning(null);
   };
 
   const togglePurchased = async (item) => {
@@ -1530,8 +1611,17 @@ function ShoppingListSub({ shoppingList, setShoppingList, kitchen, setKitchen })
           <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={inputStyle}>
             {KITCHEN_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <button onClick={addItem} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <button onClick={() => addItem()} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
         </div>
+        {conflictWarning && (
+          <div style={{ marginTop: 10, background: PANEL2, border: `1px solid ${WARNING}`, borderRadius: 10, padding: 12 }}>
+            <div style={{ fontSize: 12, marginBottom: 8, color: PAPER }}>"{conflictWarning.name}" doesn't match your {conflictWarning.diet} food profile.</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={() => setConflictWarning(null)} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: MUTED, borderRadius: 8, padding: "6px", cursor: "pointer", fontSize: 11 }}>Remove</button>
+              <button onClick={() => addItem(conflictWarning)} style={{ flex: 1, background: BRASS, border: "none", borderRadius: 8, padding: "6px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Keep anyway</button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {Object.entries(byCategory).map(([cat, catItems]) => (
@@ -1569,7 +1659,7 @@ function ShoppingListSub({ shoppingList, setShoppingList, kitchen, setKitchen })
   );
 }
 
-function FinanceTab({ spending, setSpending, accounts, setAccounts, holdings, setHoldings, research, setResearch }) {
+function FinanceTab({ spending, setSpending, accounts, setAccounts, holdings, setHoldings, research, setResearch, kitchen, setKitchen }) {
   const [sub, setSub] = useState("spending");
   const SUBS = [{ id: "spending", label: "Spending", icon: ShoppingCart }, { id: "accounts", label: "Accounts", icon: Landmark }, { id: "invest", label: "Invest", icon: TrendingUp }, { id: "research", label: "Research", icon: BookOpen }];
   return (
@@ -1580,7 +1670,7 @@ function FinanceTab({ spending, setSpending, accounts, setAccounts, holdings, se
           return <button key={s.id} onClick={() => setSub(s.id)} style={{ display: "flex", alignItems: "center", gap: 6, background: active ? PANEL2 : "transparent", border: `1px solid ${active ? BRASS : RULE}`, color: active ? PAPER : MUTED, borderRadius: 16, padding: "5px 12px", cursor: "pointer", fontSize: 12 }}><Icon size={12} /> {s.label}</button>;
         })}
       </div>
-      {sub === "spending" && <SpendingSub spending={spending} setSpending={setSpending} />}
+      {sub === "spending" && <SpendingSub spending={spending} setSpending={setSpending} kitchen={kitchen} setKitchen={setKitchen} />}
       {sub === "accounts" && <AccountsSub accounts={accounts} setAccounts={setAccounts} />}
       {sub === "invest" && <InvestSub holdings={holdings} setHoldings={setHoldings} />}
       {sub === "research" && <ResearchSub research={research} setResearch={setResearch} />}
@@ -1588,7 +1678,7 @@ function FinanceTab({ spending, setSpending, accounts, setAccounts, holdings, se
   );
 }
 
-function SpendingSub({ spending, setSpending }) {
+function SpendingSub({ spending, setSpending, kitchen, setKitchen }) {
   const [form, setForm] = useState({ merchant: "", category: SPENDING_CATEGORIES[0], amount: "" });
   const [candidates, setCandidates] = useState([]);
   const [scanning, setScanning] = useState(false);
@@ -1846,8 +1936,25 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction }) {
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
+  const [speakEnabled, setSpeakEnabled] = useState(getSetting("speakReplies", "") === "true");
   const recognitionRef = useRef(null);
   const voiceSupported = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
+  const ttsSupported = typeof window !== "undefined" && "speechSynthesis" in window;
+
+  const speak = (text) => {
+    if (!speakEnabled || !ttsSupported) return;
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = 1;
+    window.speechSynthesis.speak(utter);
+  };
+
+  const toggleSpeak = () => {
+    const next = !speakEnabled;
+    setSpeakEnabled(next);
+    setSetting("speakReplies", String(next));
+    if (!next) window.speechSynthesis?.cancel();
+  };
 
   const send = async (overrideText) => {
     const text = (overrideText ?? input).trim();
@@ -1865,6 +1972,7 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction }) {
         const assistantMsg = { role: "assistant", content: result.text };
         setChat((c) => [...c, assistantMsg]);
         await db.insertRow("chat_messages", assistantMsg);
+        speak(result.text);
       }
     } catch {
       setChat((c) => [...c, { role: "assistant", content: "Couldn't reach the assistant — check your API key in settings and your spend cap." }]);
@@ -1881,6 +1989,7 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction }) {
       const assistantMsg = { role: "assistant", content: reply };
       setChat((c) => [...c, assistantMsg]);
       await db.insertRow("chat_messages", assistantMsg);
+      speak(reply);
     } catch {
       const assistantMsg = { role: "assistant", content: resultText };
       setChat((c) => [...c, assistantMsg]);
@@ -1935,9 +2044,16 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction }) {
 
   return (
     <Card style={{ display: "flex", flexDirection: "column", height: 520, padding: 0, overflow: "hidden" }}>
-      <div style={{ padding: "14px 16px", borderBottom: `1px solid ${RULE}`, display: "flex", alignItems: "center", gap: 8 }}>
-        <Sparkles size={15} color="#8B7FA6" />
-        <div style={{ fontSize: 14, fontWeight: 600 }}>Ledger AI</div>
+      <div style={{ padding: "14px 16px", borderBottom: `1px solid ${RULE}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Sparkles size={15} color="#8B7FA6" />
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Ledger AI</div>
+        </div>
+        {ttsSupported && (
+          <button onClick={toggleSpeak} title={speakEnabled ? "Replies spoken aloud" : "Enable spoken replies"} style={{ background: "transparent", border: "none", color: speakEnabled ? BRASS : MUTED, cursor: "pointer" }}>
+            {speakEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+          </button>
+        )}
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
         {chat.length === 0 && (
