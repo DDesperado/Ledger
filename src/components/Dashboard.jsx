@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import {
   Check, Plus, Trash2, Send, Dumbbell, UtensilsCrossed, NotebookPen,
   Sparkles, ListChecks, Loader2, Wallet, ShoppingCart, Landmark, TrendingUp, BookOpen, RefreshCw, Settings, Download, Upload,
-  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2, X, Bell, Mic, Volume2, VolumeX,
+  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2, X, Bell, Mic, Volume2, VolumeX, CreditCard,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import * as db from "../lib/store";
@@ -251,6 +251,8 @@ export default function Dashboard() {
   const [accounts, setAccounts] = useState([]);
   const [holdings, setHoldings] = useState([]);
   const [research, setResearch] = useState([]);
+  const [debts, setDebts] = useState([]);
+  const [debtPayments, setDebtPayments] = useState([]);
   const [chat, setChat] = useState([]);
   const [kitchen, setKitchen] = useState([]);
   const [shoppingList, setShoppingList] = useState([]);
@@ -287,6 +289,8 @@ export default function Dashboard() {
       setAccounts(await db.fetchTable("accounts"));
       setHoldings(await db.fetchTable("holdings"));
       setResearch(await db.fetchTable("research_notes"));
+      setDebts(await db.fetchTable("debts"));
+      setDebtPayments(await db.fetchTable("debt_payments"));
       setChat(await db.fetchTable("chat_messages"));
       setKitchen(await db.fetchTable("kitchen"));
       setShoppingList(await db.fetchTable("shopping_list"));
@@ -684,7 +688,7 @@ export default function Dashboard() {
         {tab === "nutrition" && <NutritionTab targets={targets} setTargets={setTargets} meals={meals} setMeals={setMeals} />}
         {tab === "reflect" && <ReflectTab reflections={reflections} setReflections={setReflections} />}
         {tab === "finance" && (
-          <FinanceTab spending={spending} setSpending={setSpending} accounts={accounts} setAccounts={setAccounts} holdings={holdings} setHoldings={setHoldings} research={research} setResearch={setResearch} kitchen={kitchen} setKitchen={setKitchen} />
+          <FinanceTab spending={spending} setSpending={setSpending} accounts={accounts} setAccounts={setAccounts} holdings={holdings} setHoldings={setHoldings} research={research} setResearch={setResearch} kitchen={kitchen} setKitchen={setKitchen} debts={debts} setDebts={setDebts} debtPayments={debtPayments} setDebtPayments={setDebtPayments} />
         )}
         {tab === "kitchen" && (
           <KitchenTab
@@ -1672,9 +1676,16 @@ function ShoppingListSub({ shoppingList, setShoppingList, kitchen, setKitchen, d
   );
 }
 
-function FinanceTab({ spending, setSpending, accounts, setAccounts, holdings, setHoldings, research, setResearch, kitchen, setKitchen }) {
+function FinanceTab({ spending, setSpending, accounts, setAccounts, holdings, setHoldings, research, setResearch, kitchen, setKitchen, debts, setDebts, debtPayments, setDebtPayments }) {
   const [sub, setSub] = useState("spending");
-  const SUBS = [{ id: "spending", label: "Spending", icon: ShoppingCart }, { id: "accounts", label: "Accounts", icon: Landmark }, { id: "invest", label: "Invest", icon: TrendingUp }, { id: "research", label: "Research", icon: BookOpen }];
+  const SUBS = [
+    { id: "spending", label: "Spending", icon: ShoppingCart },
+    { id: "accounts", label: "Accounts", icon: Landmark },
+    { id: "debt", label: `Debt${debts.length ? ` (${debts.length})` : ""}`, icon: CreditCard },
+    { id: "invest", label: "Invest", icon: TrendingUp },
+    { id: "research", label: "Research", icon: BookOpen },
+  ];
+  const totalDebt = debts.reduce((s, d) => s + d.balance, 0);
   return (
     <div>
       <div style={{ display: "flex", gap: 4, marginBottom: 16, flexWrap: "wrap" }}>
@@ -1684,7 +1695,8 @@ function FinanceTab({ spending, setSpending, accounts, setAccounts, holdings, se
         })}
       </div>
       {sub === "spending" && <SpendingSub spending={spending} setSpending={setSpending} kitchen={kitchen} setKitchen={setKitchen} />}
-      {sub === "accounts" && <AccountsSub accounts={accounts} setAccounts={setAccounts} />}
+      {sub === "accounts" && <AccountsSub accounts={accounts} setAccounts={setAccounts} totalDebt={totalDebt} />}
+      {sub === "debt" && <DebtSub debts={debts} setDebts={setDebts} debtPayments={debtPayments} setDebtPayments={setDebtPayments} />}
       {sub === "invest" && <InvestSub holdings={holdings} setHoldings={setHoldings} />}
       {sub === "research" && <ResearchSub research={research} setResearch={setResearch} />}
     </div>
@@ -1794,9 +1806,9 @@ function SpendingSub({ spending, setSpending, kitchen, setKitchen }) {
   );
 }
 
-function AccountsSub({ accounts, setAccounts }) {
+function AccountsSub({ accounts, setAccounts, totalDebt }) {
   const [form, setForm] = useState({ name: "", type: "TFSA", balance: "" });
-  const types = ["TFSA", "RRSP", "RPP", "FHSA", "Chequing", "Savings", "Credit", "Other"];
+  const types = ["TFSA", "RRSP", "RPP", "FHSA", "Chequing", "Savings", "Other"];
   const addAccount = async () => {
     if (!form.name.trim() || !form.balance) return;
     const row = await db.insertRow("accounts", { name: form.name.trim(), type: form.type, balance: Number(form.balance) || 0, updated_date: todayStr() });
@@ -1808,14 +1820,18 @@ function AccountsSub({ accounts, setAccounts }) {
     setAccounts(accounts.map((a) => (a.id === id ? row : a)));
   };
   const removeAccount = async (id) => { await db.deleteRow("accounts", id); setAccounts(accounts.filter((a) => a.id !== id)); };
-  const total = accounts.reduce((s, a) => s + a.balance, 0);
+  const assetsTotal = accounts.reduce((s, a) => s + a.balance, 0);
+  const total = assetsTotal - (totalDebt || 0);
 
   return (
     <div>
       <Card style={{ marginBottom: 16 }}>
         <SectionLabel>Net worth</SectionLabel>
         <div style={{ fontFamily: "Inter", fontSize: 30, fontWeight: 600 }}><LedgerNum value={`$${total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} positive={total >= 0} /></div>
-        <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>across {accounts.length} account{accounts.length !== 1 ? "s" : ""}</div>
+        <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>
+          ${assetsTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })} across {accounts.length} account{accounts.length !== 1 ? "s" : ""}
+          {totalDebt > 0 && <> minus <span style={{ color: RUST }}>${totalDebt.toLocaleString(undefined, { minimumFractionDigits: 2 })} debt</span></>}
+        </div>
       </Card>
       <Card style={{ marginBottom: 16 }}>
         <SectionLabel>Add account</SectionLabel>
@@ -1837,6 +1853,109 @@ function AccountsSub({ accounts, setAccounts }) {
         ))}
         {accounts.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>No accounts yet.</div>}
       </Card>
+    </div>
+  );
+}
+
+function DebtSub({ debts, setDebts, debtPayments, setDebtPayments }) {
+  const [form, setForm] = useState({ name: "", balance: "", apr: "", minPayment: "", dueDay: "" });
+  const [payAmounts, setPayAmounts] = useState({});
+
+  const addDebt = async () => {
+    if (!form.name.trim() || !form.balance) return;
+    const row = await db.insertRow("debts", {
+      name: form.name.trim(), balance: Number(form.balance) || 0, apr: Number(form.apr) || 0,
+      minPayment: Number(form.minPayment) || 0, dueDay: Number(form.dueDay) || null,
+    });
+    setDebts([...debts, row]);
+    setForm({ name: "", balance: "", apr: "", minPayment: "", dueDay: "" });
+  };
+
+  const removeDebt = async (id) => {
+    await db.deleteRow("debts", id);
+    setDebts(debts.filter((d) => d.id !== id));
+  };
+
+  const logPayment = async (debt) => {
+    const amount = Number(payAmounts[debt.id]) || 0;
+    if (amount <= 0) return;
+    const payment = await db.insertRow("debt_payments", { debtId: debt.id, date: todayStr(), amount });
+    setDebtPayments([payment, ...debtPayments]);
+    const newBalance = Math.max(0, debt.balance - amount);
+    const row = await db.updateRow("debts", debt.id, { balance: newBalance });
+    setDebts(debts.map((d) => (d.id === debt.id ? row : d)));
+    setPayAmounts({ ...payAmounts, [debt.id]: "" });
+  };
+
+  const totalDebt = debts.reduce((s, d) => s + d.balance, 0);
+  const totalMinPayments = debts.reduce((s, d) => s + d.minPayment, 0);
+  const recentPayments = debtPayments.slice(0, 10);
+  const debtName = (id) => debts.find((d) => d.id === id)?.name || "Unknown";
+
+  const today = new Date().getDate();
+
+  return (
+    <div>
+      <Card style={{ marginBottom: 16 }}>
+        <SectionLabel>Total debt</SectionLabel>
+        <div style={{ fontFamily: "Inter", fontSize: 30, fontWeight: 600, color: totalDebt > 0 ? RUST : PAPER }}>${totalDebt.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+        {totalMinPayments > 0 && <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>${totalMinPayments.toFixed(2)} in minimum payments due monthly</div>}
+      </Card>
+
+      <Card style={{ marginBottom: 16 }}>
+        <SectionLabel>Add a card or loan</SectionLabel>
+        <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 8, marginBottom: 8 }}>
+          <input placeholder="e.g. Visa ending 4417" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inputStyle} />
+          <input placeholder="Balance owed" type="number" value={form.balance} onChange={(e) => setForm({ ...form, balance: e.target.value })} style={inputStyle} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          <input placeholder="APR %" type="number" value={form.apr} onChange={(e) => setForm({ ...form, apr: e.target.value })} style={inputStyle} />
+          <input placeholder="Min payment $" type="number" value={form.minPayment} onChange={(e) => setForm({ ...form, minPayment: e.target.value })} style={inputStyle} />
+          <input placeholder="Due day (1-31)" type="number" min="1" max="31" value={form.dueDay} onChange={(e) => setForm({ ...form, dueDay: e.target.value })} style={inputStyle} />
+        </div>
+        <button onClick={addDebt} style={{ width: "100%", background: BRASS, border: "none", borderRadius: 10, padding: "10px", cursor: "pointer", fontWeight: 600, fontSize: 13, marginTop: 10 }}>Add</button>
+      </Card>
+
+      {debts.map((d) => {
+        const overdue = d.dueDay && d.dueDay < today && d.balance > 0;
+        return (
+          <Card key={d.id} style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>{d.name}</div>
+                <div style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>
+                  {d.apr > 0 && `${d.apr}% APR`}{d.apr > 0 && d.minPayment > 0 && " · "}{d.minPayment > 0 && `$${d.minPayment} min`}{d.dueDay && ` · due day ${d.dueDay}`}
+                </div>
+              </div>
+              <button onClick={() => removeDebt(d.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={13} /></button>
+            </div>
+            <div style={{ fontFamily: "IBM Plex Mono", fontSize: 20, fontWeight: 700, color: d.balance > 0 ? RUST : SUCCESS, marginBottom: overdue ? 6 : 12 }}>
+              ${d.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            </div>
+            {overdue && <div style={{ color: RUST, fontSize: 11, marginBottom: 10, display: "flex", alignItems: "center", gap: 4 }}><AlertTriangle size={11} /> Payment overdue</div>}
+            {d.balance > 0 && (
+              <div style={{ display: "flex", gap: 8 }}>
+                <input placeholder="Payment amount" type="number" value={payAmounts[d.id] || ""} onChange={(e) => setPayAmounts({ ...payAmounts, [d.id]: e.target.value })} style={inputStyle} />
+                <button onClick={() => logPayment(d)} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "0 16px", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}>Log payment</button>
+              </div>
+            )}
+          </Card>
+        );
+      })}
+      {debts.length === 0 && <EmptyState icon={CreditCard} title="No debt tracked" />}
+
+      {recentPayments.length > 0 && (
+        <Card>
+          <SectionLabel>Recent payments</SectionLabel>
+          {recentPayments.map((p) => (
+            <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${RULE}`, fontSize: 13 }}>
+              <span style={{ color: MUTED, fontFamily: "IBM Plex Mono", fontSize: 11, width: 54 }}>{fmtDate(p.date)}</span>
+              <span style={{ flex: 1 }}>{debtName(p.debtId)}</span>
+              <span style={{ fontFamily: "IBM Plex Mono", color: SUCCESS }}>-${p.amount.toFixed(2)}</span>
+            </div>
+          ))}
+        </Card>
+      )}
     </div>
   );
 }
