@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import {
   Check, Plus, Trash2, Send, Dumbbell, UtensilsCrossed, NotebookPen,
   Sparkles, ListChecks, Loader2, Wallet, ShoppingCart, Landmark, TrendingUp, BookOpen, RefreshCw, Settings, Download, Upload,
-  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2, X, Bell, Mic, Volume2, VolumeX, CreditCard,
+  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2, X, Bell, Mic, Volume2, VolumeX, CreditCard, Search,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import * as db from "../lib/store";
 import { getSetting, setSetting, exportAll, importAll } from "../lib/store";
 import * as gmail from "../lib/gmail";
+import { EXERCISES } from "../lib/exercises";
+import * as mealdb from "../lib/mealdb";
 import { INK, PANEL, PANEL2, CARD, CARD_ELEVATED, RULE, PAPER, MUTED, FAINT, BRASS, VERDI, RUST, SUCCESS, WARNING, INFO, CAT_NUTRITION as CAT_NUTRITION_COLOR, inputStyle, uid, todayStr, fmtDate, fetchQuote, colorFor, DIETARY_TYPES, COMMON_ALLERGENS, recipeMatchesDiet, recipeMatchesAllergies } from "../lib/theme";
 
 const DEFAULT_ITEMS = [
@@ -84,6 +86,41 @@ function Card({ children, style }) {
       ...style,
     }}>
       {children}
+    </div>
+  );
+}
+
+function SearchSelect({ value, onChange, options, placeholder, style }) {
+  const [open, setOpen] = useState(false);
+  const matches = useMemo(() => {
+    if (!value.trim()) return options.slice(0, 8);
+    const q = value.toLowerCase();
+    return options.filter((o) => o.toLowerCase().includes(q)).slice(0, 8);
+  }, [value, options]);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <input
+        value={value}
+        onChange={(e) => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder={placeholder}
+        style={style}
+      />
+      {open && matches.length > 0 && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: CARD_ELEVATED, border: `1px solid ${RULE}`, borderRadius: 10, marginTop: 4, maxHeight: 200, overflowY: "auto", zIndex: 25, boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }}>
+          {matches.map((m) => (
+            <div
+              key={m}
+              onMouseDown={() => { onChange(m); setOpen(false); }}
+              style={{ padding: "8px 12px", fontSize: 13, cursor: "pointer", color: PAPER, borderBottom: `1px solid ${RULE}` }}
+            >
+              {m}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1033,7 +1070,7 @@ function WorkoutTab({ workouts, setWorkouts }) {
       <Card style={{ marginBottom: 16 }}>
         <SectionLabel>Log a lift</SectionLabel>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr auto", gap: 8 }}>
-          <input placeholder="Exercise" value={form.exercise} onChange={(e) => setForm({ ...form, exercise: e.target.value })} style={inputStyle} />
+          <SearchSelect value={form.exercise} onChange={(v) => setForm({ ...form, exercise: v })} options={EXERCISES} placeholder="Search exercise…" style={inputStyle} />
           <input placeholder="Sets" type="number" value={form.sets} onChange={(e) => setForm({ ...form, sets: e.target.value })} style={inputStyle} />
           <input placeholder="Reps" type="number" value={form.reps} onChange={(e) => setForm({ ...form, reps: e.target.value })} style={inputStyle} />
           <input placeholder="Weight" type="number" value={form.weight} onChange={(e) => setForm({ ...form, weight: e.target.value })} style={inputStyle} />
@@ -1248,7 +1285,62 @@ function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList, recipe
 function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals, dietTypes, allergies }) {
   const [confirmingId, setConfirmingId] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [showBrowse, setShowBrowse] = useState(false);
+  const [cuisines, setCuisines] = useState([]);
+  const [selectedCuisine, setSelectedCuisine] = useState("");
+  const [browseQuery, setBrowseQuery] = useState("");
+  const [browseResults, setBrowseResults] = useState([]);
+  const [browseLoading, setBrowseLoading] = useState(false);
+  const [previewMeal, setPreviewMeal] = useState(null);
   const [form, setForm] = useState({ name: "", prepTime: "", calories: "", protein: "", carbs: "", fat: "", ingredients: [{ name: "", qty: "", unit: "" }], dietTags: [], allergens: [] });
+
+  useEffect(() => {
+    if (showBrowse && cuisines.length === 0) {
+      mealdb.fetchCuisineList().then(setCuisines).catch(() => setCuisines([]));
+    }
+  }, [showBrowse]);
+
+  const runCuisineBrowse = async (area) => {
+    setSelectedCuisine(area);
+    setBrowseLoading(true);
+    try {
+      const results = await mealdb.fetchMealsByCuisine(area);
+      setBrowseResults(results.slice(0, 20));
+    } catch {
+      setBrowseResults([]);
+    }
+    setBrowseLoading(false);
+  };
+
+  const runNameSearch = async () => {
+    if (!browseQuery.trim()) return;
+    setBrowseLoading(true);
+    setSelectedCuisine("");
+    try {
+      const results = await mealdb.searchMealsByName(browseQuery.trim());
+      setBrowseResults(results || []);
+    } catch {
+      setBrowseResults([]);
+    }
+    setBrowseLoading(false);
+  };
+
+  const openPreview = async (basic) => {
+    const detail = await mealdb.fetchMealDetail(basic.idMeal);
+    setPreviewMeal(detail);
+  };
+
+  const importMeal = async () => {
+    if (!previewMeal) return;
+    const ingredients = mealdb.parseIngredients(previewMeal);
+    const row = await db.insertRow("recipes", {
+      name: previewMeal.strMeal, prepTime: 30, calories: 0, protein: 0, carbs: 0, fat: 0,
+      ingredients, dietTags: [], allergens: [], source: "TheMealDB",
+    });
+    setRecipes([...recipes, row]);
+    setPreviewMeal(null);
+    setShowBrowse(false);
+  };
 
   const findKitchenMatch = (ingredientName) => kitchen.find((k) => k.name.toLowerCase() === ingredientName.toLowerCase());
 
@@ -1325,6 +1417,60 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
 
   return (
     <div>
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showBrowse ? 12 : 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Search size={14} color={BRASS} />
+            <SectionLabel>Search recipes — Indian, British, Chinese & more</SectionLabel>
+          </div>
+          <button onClick={() => setShowBrowse((v) => !v)} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 12, color: MUTED, fontSize: 11, padding: "3px 10px", cursor: "pointer" }}>{showBrowse ? "close" : "browse"}</button>
+        </div>
+        {showBrowse && (
+          <div>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 8, marginBottom: 10 }}>
+              <input value={browseQuery} onChange={(e) => setBrowseQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runNameSearch()} placeholder="Search by dish name…" style={inputStyle} />
+              <button onClick={runNameSearch} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, cursor: "pointer", fontSize: 12 }}>Search</button>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+              {cuisines.map((c) => (
+                <button key={c} onClick={() => runCuisineBrowse(c)} style={{ background: selectedCuisine === c ? BRASS : PANEL2, color: selectedCuisine === c ? INK : MUTED, border: `1px solid ${selectedCuisine === c ? BRASS : RULE}`, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>{c}</button>
+              ))}
+            </div>
+            {browseLoading && <Loader2 className="animate-spin" size={16} color={MUTED} />}
+            {!browseLoading && browseResults.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 260, overflowY: "auto" }}>
+                {browseResults.map((m) => (
+                  <div key={m.idMeal} onClick={() => openPreview(m)} style={{ display: "flex", alignItems: "center", gap: 10, background: PANEL2, borderRadius: 10, padding: 8, cursor: "pointer" }}>
+                    {m.strMealThumb && <img src={m.strMealThumb} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover" }} />}
+                    <div style={{ fontSize: 13 }}>{m.strMeal}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ color: FAINT, fontSize: 10, marginTop: 10, lineHeight: 1.5 }}>
+              From TheMealDB's free public recipe database — no account needed. Nutrition info isn't included, so you'll set macros after importing.
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {previewMeal && (
+        <div onClick={() => setPreviewMeal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 40, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: CARD, borderRadius: 14, padding: 20, maxWidth: 420, width: "100%", maxHeight: "80vh", overflowY: "auto" }}>
+            <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>{previewMeal.strMeal}</div>
+            <div style={{ color: MUTED, fontSize: 12, marginBottom: 12 }}>{previewMeal.strArea} · {previewMeal.strCategory}</div>
+            <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>Ingredients</div>
+            <div style={{ fontSize: 13, lineHeight: 1.8, marginBottom: 16 }}>
+              {mealdb.parseIngredients(previewMeal).map((ing, i) => <div key={i}>{ing.qty}{ing.unit} {ing.name}</div>)}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={importMeal} style={{ flex: 1, background: BRASS, border: "none", borderRadius: 10, padding: "10px", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Add to my recipes</button>
+              <button onClick={() => setPreviewMeal(null)} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: MUTED, borderRadius: 10, padding: "10px", cursor: "pointer", fontSize: 13 }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
           <ChefHat size={14} color={BRASS} />
@@ -1905,7 +2051,7 @@ function DebtSub({ debts, setDebts, debtPayments, setDebtPayments }) {
       <Card style={{ marginBottom: 16 }}>
         <SectionLabel>Add a card or loan</SectionLabel>
         <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 8, marginBottom: 8 }}>
-          <input placeholder="e.g. Visa ending 4417" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inputStyle} />
+          <input placeholder="Bank or card (e.g. Chase Sapphire, RBC Visa)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inputStyle} />
           <input placeholder="Balance owed" type="number" value={form.balance} onChange={(e) => setForm({ ...form, balance: e.target.value })} style={inputStyle} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>

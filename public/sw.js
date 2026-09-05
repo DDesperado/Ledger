@@ -1,4 +1,4 @@
-const CACHE = "ledger-cache-v1";
+const CACHE = "auren-cache-v2";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
