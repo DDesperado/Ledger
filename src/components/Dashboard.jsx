@@ -84,7 +84,54 @@ function LedgerNum({ value, positive }) {
   return <span style={{ fontFamily: "IBM Plex Mono", fontVariantNumeric: "tabular-nums", color: positive === undefined ? PAPER : positive ? VERDI : RUST }}>{value}</span>;
 }
 
-async function callAssistant(messages, context, apiKey) {
+const ASSISTANT_TOOLS = [
+  {
+    name: "add_shopping_item",
+    description: "Add an item to the user's shopping list.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Item name, e.g. 'Eggs'" },
+        category: { type: "string", enum: KITCHEN_CATEGORIES },
+      },
+      required: ["name", "category"],
+    },
+  },
+  {
+    name: "log_meal",
+    description: "Log a meal the user just ate to their Nutrition tab.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        calories: { type: "number" }, protein: { type: "number" }, carbs: { type: "number" }, fat: { type: "number" },
+      },
+      required: ["name", "calories", "protein", "carbs", "fat"],
+    },
+  },
+  {
+    name: "add_reminder",
+    description: "Create a reminder/task for the user with a due date.",
+    input_schema: {
+      type: "object",
+      properties: { title: { type: "string" }, dueDate: { type: "string", description: "YYYY-MM-DD" } },
+      required: ["title", "dueDate"],
+    },
+  },
+  {
+    name: "log_expense",
+    description: "Log a spending entry to Finance.",
+    input_schema: {
+      type: "object",
+      properties: {
+        merchant: { type: "string" }, category: { type: "string", enum: SPENDING_CATEGORIES }, amount: { type: "number" },
+      },
+      required: ["merchant", "category", "amount"],
+    },
+  },
+];
+
+function buildAssistantSystemPrompt(context) {
   const day = todayStr();
   const doneToday = (context.doneToday || []).length;
   const totalItems = (context.items || []).length;
@@ -95,9 +142,14 @@ async function callAssistant(messages, context, apiKey) {
   const lastReflection = (context.reflections || [])[0];
   const holdingsSummary = (context.holdings || []).map((h) => `${h.shares}x ${h.ticker}`).join(", ") || "none";
   const name = context.displayName || "there";
+  const lowStock = (context.kitchen || []).filter((k) => k.qty <= k.threshold).map((k) => k.name);
+  const dietLine = context.dietTypes?.length ? `Diet: ${context.dietTypes.join(", ")}.` : "";
+  const allergyLine = context.allergies?.length ? `Allergies (never suggest these): ${context.allergies.join(", ")}.` : "";
 
-  const system = `You are the assistant embedded in ${name}'s personal "Ledger" app — a calm, direct daily-accounting coach covering habits, fitness, nutrition, and personal finance. Keep replies short (2-5 sentences) unless asked for more. Today's snapshot: ${doneToday}/${totalItems} checklist items done, ${cals} calories logged, $${spentToday.toFixed(2)} spent today, last workout: ${lastWorkout ? `${lastWorkout.exercise} ${lastWorkout.weight}lb on ${lastWorkout.date}` : "none logged"}, last reflection mood: ${lastReflection ? lastReflection.mood : "none"}, net worth: $${netWorth.toFixed(2)}, holdings: ${holdingsSummary}. Use this context naturally, don't recite it as a report. You are not a licensed financial advisor — give factual, educational perspective rather than confident buy/sell recommendations.`;
+  return `You are the assistant embedded in ${name}'s personal "Ledger" app — a calm, direct daily-accounting coach covering habits, fitness, nutrition, kitchen, and personal finance. Keep replies short (2-5 sentences) unless asked for more. Today's snapshot: ${doneToday}/${totalItems} checklist items done, ${cals} calories logged, $${spentToday.toFixed(2)} spent today, last workout: ${lastWorkout ? `${lastWorkout.exercise} ${lastWorkout.weight}lb on ${lastWorkout.date}` : "none logged"}, last reflection mood: ${lastReflection ? lastReflection.mood : "none"}, net worth: $${netWorth.toFixed(2)}, holdings: ${holdingsSummary}, low stock: ${lowStock.join(", ") || "none"}. ${dietLine} ${allergyLine} You are not a licensed financial advisor — give factual, educational perspective rather than confident buy/sell recommendations. When the user asks you to add, log, or remind something, use the matching tool rather than just saying you will.`;
+}
 
+async function callAssistantRaw(apiMessages, system, apiKey) {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -110,15 +162,52 @@ async function callAssistant(messages, context, apiKey) {
       model: "claude-haiku-4-5-20251001",
       max_tokens: 500,
       system,
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      tools: ASSISTANT_TOOLS,
+      messages: apiMessages,
     }),
   });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(text || "Anthropic API error");
   }
-  const data = await res.json();
-  return (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n") || "…";
+  return res.json();
+}
+
+// Returns either { type: "text", text } or { type: "tool_use", toolUse, rawContent }
+async function callAssistant(messages, context, apiKey) {
+  const system = buildAssistantSystemPrompt(context);
+  const apiMessages = messages.map((m) => ({ role: m.role, content: m.content }));
+  const data = await callAssistantRaw(apiMessages, system, apiKey);
+  const toolUseBlock = (data.content || []).find((b) => b.type === "tool_use");
+  if (toolUseBlock) {
+    return { type: "tool_use", toolUse: toolUseBlock, rawContent: data.content, system, apiMessages };
+  }
+  const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n") || "…";
+  return { type: "text", text };
+}
+
+// After the user confirms/cancels an action, send the tool_result back so the
+// assistant can give a natural closing reply, without persisting the tool_use
+// turn into the visible chat history.
+async function continueAfterTool({ system, apiMessages, rawContent, toolUse }, resultText, apiKey) {
+  const followUp = [
+    ...apiMessages,
+    { role: "assistant", content: rawContent },
+    { role: "user", content: [{ type: "tool_result", tool_use_id: toolUse.id, content: resultText }] },
+  ];
+  const data = await callAssistantRaw(followUp, system, apiKey);
+  return (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n") || "Done.";
+}
+
+function describeAction(toolUse) {
+  const { name, input } = toolUse;
+  switch (name) {
+    case "add_shopping_item": return `Add "${input.name}" to your shopping list (${input.category})`;
+    case "log_meal": return `Log "${input.name}" — ${input.calories} cal, ${input.protein}g protein`;
+    case "add_reminder": return `Remind you: "${input.title}" on ${input.dueDate}`;
+    case "log_expense": return `Log $${input.amount} at ${input.merchant} (${input.category})`;
+    default: return name;
+  }
 }
 
 export default function Dashboard() {
@@ -261,6 +350,34 @@ export default function Dashboard() {
   const finishOnboarding = () => {
     setSetting("onboarded", "true");
     setShowOnboarding(false);
+  };
+
+  const executeAssistantAction = async (toolUse) => {
+    const { name, input } = toolUse;
+    switch (name) {
+      case "add_shopping_item": {
+        const row = await db.insertRow("shopping_list", { name: input.name, category: input.category, purchased: false });
+        setShoppingList((prev) => [row, ...prev]);
+        return `Added "${input.name}" to the shopping list.`;
+      }
+      case "log_meal": {
+        const row = await db.insertRow("nutrition_entries", { date: todayStr(), name: input.name, calories: input.calories, protein: input.protein, carbs: input.carbs, fat: input.fat });
+        setMeals((prev) => [row, ...prev]);
+        return `Logged "${input.name}": ${input.calories} cal, ${input.protein}g protein.`;
+      }
+      case "add_reminder": {
+        const row = await db.insertRow("reminders", { title: input.title, dueDate: input.dueDate, done: false });
+        setReminders((prev) => [row, ...prev]);
+        return `Reminder set: "${input.title}" on ${input.dueDate}.`;
+      }
+      case "log_expense": {
+        const row = await db.insertRow("spending", { date: todayStr(), merchant: input.merchant, category: input.category, amount: input.amount });
+        setSpending((prev) => [row, ...prev]);
+        return `Logged $${input.amount} at ${input.merchant} under ${input.category}.`;
+      }
+      default:
+        return "Unknown action.";
+    }
   };
 
   const saveApiKey = (key) => {
@@ -493,7 +610,11 @@ export default function Dashboard() {
           />
         )}
         {tab === "assistant" && (
-          <AssistantTab chat={chat} setChat={setChat} context={{ items, doneToday, workouts, meals, targets, reflections, spending, accounts, holdings, displayName }} apiKey={apiKey} />
+          <AssistantTab
+            chat={chat} setChat={setChat}
+            context={{ items, doneToday, workouts, meals, targets, reflections, spending, accounts, holdings, displayName, kitchen, dietTypes, allergies }}
+            apiKey={apiKey} executeAction={executeAssistantAction}
+          />
         )}
         </div>
 
@@ -1596,10 +1717,11 @@ function ResearchSub({ research, setResearch }) {
   );
 }
 
-function AssistantTab({ chat, setChat, context, apiKey }) {
+function AssistantTab({ chat, setChat, context, apiKey, executeAction }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
   const recognitionRef = useRef(null);
   const voiceSupported = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
 
@@ -1612,14 +1734,41 @@ function AssistantTab({ chat, setChat, context, apiKey }) {
     setInput("");
     setLoading(true);
     try {
-      const reply = await callAssistant([...chat, userMsg], context, apiKey);
-      const assistantMsg = { role: "assistant", content: reply };
-      setChat((c) => [...c, assistantMsg]);
-      await db.insertRow("chat_messages", assistantMsg);
+      const result = await callAssistant([...chat, userMsg], context, apiKey);
+      if (result.type === "tool_use") {
+        setPendingAction({ ...result, description: describeAction(result.toolUse) });
+      } else {
+        const assistantMsg = { role: "assistant", content: result.text };
+        setChat((c) => [...c, assistantMsg]);
+        await db.insertRow("chat_messages", assistantMsg);
+      }
     } catch {
       setChat((c) => [...c, { role: "assistant", content: "Couldn't reach the assistant — check your API key in settings and your spend cap." }]);
     }
     setLoading(false);
+  };
+
+  const confirmAction = async () => {
+    if (!pendingAction) return;
+    setLoading(true);
+    const resultText = await executeAction(pendingAction.toolUse);
+    try {
+      const reply = await continueAfterTool(pendingAction, resultText, apiKey);
+      const assistantMsg = { role: "assistant", content: reply };
+      setChat((c) => [...c, assistantMsg]);
+      await db.insertRow("chat_messages", assistantMsg);
+    } catch {
+      const assistantMsg = { role: "assistant", content: resultText };
+      setChat((c) => [...c, assistantMsg]);
+      await db.insertRow("chat_messages", assistantMsg);
+    }
+    setPendingAction(null);
+    setLoading(false);
+  };
+
+  const cancelAction = () => {
+    setPendingAction(null);
+    setChat((c) => [...c, { role: "assistant", content: "Okay, I won't do that." }]);
   };
 
   const toggleListening = () => {
@@ -1645,7 +1794,7 @@ function AssistantTab({ chat, setChat, context, apiKey }) {
     rec.start();
   };
 
-  const suggestions = ["What should I eat?", "What do I need to buy?", "How did I spend this month?", "Plan my day", "What workout should I do?"];
+  const suggestions = ["What should I eat?", "Add eggs to my shopping list", "How did I spend this month?", "Remind me to pay rent tomorrow", "What workout should I do?"];
 
   if (!apiKey) {
     return (
@@ -1682,6 +1831,17 @@ function AssistantTab({ chat, setChat, context, apiKey }) {
             <div style={{ maxWidth: "80%", padding: "8px 12px", borderRadius: 12, fontSize: 13, lineHeight: 1.5, background: m.role === "user" ? BRASS : PANEL2, color: m.role === "user" ? INK : PAPER, border: m.role === "user" ? "none" : `1px solid ${RULE}` }}>{m.content}</div>
           </div>
         ))}
+        {pendingAction && (
+          <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 10 }}>
+            <div style={{ maxWidth: "85%", background: PANEL2, border: `1px solid #8B7FA6`, borderRadius: 12, padding: 12 }}>
+              <div style={{ fontSize: 13, marginBottom: 10 }}>{pendingAction.description}?</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={confirmAction} style={{ flex: 1, background: BRASS, border: "none", borderRadius: 8, padding: "6px", cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Confirm</button>
+                <button onClick={cancelAction} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: MUTED, borderRadius: 8, padding: "6px", cursor: "pointer", fontSize: 12 }}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
         {loading && <Loader2 className="animate-spin" size={16} color={MUTED} />}
       </div>
       <div style={{ display: "flex", gap: 8, padding: 12, borderTop: `1px solid ${RULE}` }}>
