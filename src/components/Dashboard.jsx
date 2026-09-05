@@ -7,7 +7,8 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import * as db from "../lib/store";
 import { getSetting, setSetting, exportAll, importAll } from "../lib/store";
-import { INK, PANEL, PANEL2, CARD, CARD_ELEVATED, RULE, PAPER, MUTED, FAINT, BRASS, VERDI, RUST, SUCCESS, WARNING, INFO, inputStyle, uid, todayStr, fmtDate, fetchQuote, colorFor, DIETARY_TYPES, COMMON_ALLERGENS, recipeMatchesDiet, recipeMatchesAllergies } from "../lib/theme";
+import * as gmail from "../lib/gmail";
+import { INK, PANEL, PANEL2, CARD, CARD_ELEVATED, RULE, PAPER, MUTED, FAINT, BRASS, VERDI, RUST, SUCCESS, WARNING, INFO, CAT_NUTRITION as CAT_NUTRITION_COLOR, inputStyle, uid, todayStr, fmtDate, fetchQuote, colorFor, DIETARY_TYPES, COMMON_ALLERGENS, recipeMatchesDiet, recipeMatchesAllergies } from "../lib/theme";
 
 const DEFAULT_ITEMS = [
   { category: "Morning", label: "Clear inbox & plan the day" },
@@ -40,26 +41,21 @@ const DEFAULT_RECIPES = [
   },
 ];
 
-function Gauge({ percent }) {
-  const pct = Math.max(0, Math.min(100, percent));
-  const angle = (pct / 100) * 180 - 90;
-  const r = 78, cx = 90, cy = 90;
-  const arc = (startDeg, endDeg, color, width = 10) => {
-    const s = (Math.PI / 180) * startDeg, e = (Math.PI / 180) * endDeg;
-    const x1 = cx + r * Math.cos(s), y1 = cy + r * Math.sin(s);
-    const x2 = cx + r * Math.cos(e), y2 = cy + r * Math.sin(e);
-    return <path d={`M ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2}`} stroke={color} strokeWidth={width} fill="none" strokeLinecap="round" />;
-  };
+function ProgressBar({ done, total, label, color = BRASS }) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
   return (
-    <svg viewBox="0 0 180 110" width="180" height="110">
-      {arc(180, 360, RULE, 10)}
-      {arc(180, 180 + (pct / 100) * 180, BRASS, 10)}
-      <g transform={`rotate(${angle} ${cx} ${cy})`}>
-        <line x1={cx} y1={cy} x2={cx - 62} y2={cy} stroke={PAPER} strokeWidth="2.5" strokeLinecap="round" />
-      </g>
-      <circle cx={cx} cy={cy} r="5" fill={BRASS} stroke={INK} strokeWidth="2" />
-      <text x={cx} y={cy + 30} textAnchor="middle" fill={PAPER} fontFamily="IBM Plex Mono" fontSize="22" fontWeight="600">{Math.round(pct)}%</text>
-    </svg>
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>
+          <LedgerNum value={done} /> <span style={{ color: MUTED, fontWeight: 400 }}>/ {total} completed</span>
+        </div>
+        <div style={{ fontSize: 15, fontWeight: 700, color }}>{pct}%</div>
+      </div>
+      {label && <div style={{ color: MUTED, fontSize: 12, marginBottom: 8 }}>{label}</div>}
+      <div style={{ height: 8, background: RULE, borderRadius: 5, overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 5, transition: "width 0.25s ease" }} />
+      </div>
+    </div>
   );
 }
 
@@ -76,6 +72,20 @@ function Card({ children, style }) {
       ...style,
     }}>
       {children}
+    </div>
+  );
+}
+
+function EmptyState({ icon: Icon, title, actionLabel, onAction }) {
+  return (
+    <div style={{ textAlign: "center", padding: "24px 12px" }}>
+      {Icon && <Icon size={20} color={FAINT} style={{ marginBottom: 8 }} />}
+      <div style={{ color: MUTED, fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: onAction ? 12 : 0 }}>{title}</div>
+      {onAction && (
+        <button onClick={onAction} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: BRASS, borderRadius: 10, padding: "8px 16px", fontSize: 13, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Plus size={13} /> {actionLabel}
+        </button>
+      )}
     </div>
   );
 }
@@ -240,6 +250,9 @@ export default function Dashboard() {
   const [dietTypes, setDietTypes] = useState(JSON.parse(getSetting("dietTypes", "[]")));
   const [allergies, setAllergies] = useState(JSON.parse(getSetting("allergies", "[]")));
   const [showDietSettings, setShowDietSettings] = useState(false);
+  const [googleClientId, setGoogleClientId] = useState(getSetting("googleClientId", ""));
+  const [gmailConnected, setGmailConnected] = useState(false);
+  const [gmailError, setGmailError] = useState("");
 
   useEffect(() => {
     if (!displayName) { setLoading(false); return; }
@@ -397,6 +410,26 @@ export default function Dashboard() {
     setSetting("allergies", JSON.stringify(next));
   };
 
+  const saveGoogleClientId = (id) => {
+    setGoogleClientId(id);
+    setSetting("googleClientId", id);
+  };
+
+  const connectGmail = async () => {
+    setGmailError("");
+    try {
+      await gmail.requestGmailAccess(googleClientId.trim());
+      setGmailConnected(true);
+    } catch (e) {
+      setGmailError(e.message);
+    }
+  };
+
+  const disconnectGmail = () => {
+    gmail.disconnectGmail();
+    setGmailConnected(false);
+  };
+
   const downloadBackup = () => {
     const blob = new Blob([exportAll()], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -475,6 +508,9 @@ export default function Dashboard() {
             <div style={{ fontFamily: "Inter", fontWeight: 600, fontSize: 30, lineHeight: 1.15 }}>
               {greeting}, <span style={{ fontStyle: "italic", fontWeight: 500 }}>{displayName}</span>.
             </div>
+            {tab === "today" && items.length > 0 && (
+              <div style={{ color: MUTED, fontSize: 13, marginTop: 4 }}>{items.length} thing{items.length !== 1 ? "s" : ""} today · {doneToday.length} completed</div>
+            )}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => setShowReminders(true)} style={{ position: "relative", background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "6px 10px", display: "flex", alignItems: "center", color: MUTED, cursor: "pointer" }}>
@@ -520,6 +556,25 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
+
+            <SectionLabel>Integrations — Gmail</SectionLabel>
+            <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5, marginBottom: 10 }}>
+              Read-only access to find bills and receipts. Ledger never sees your password, and you can disconnect anytime.
+            </div>
+            <input
+              value={googleClientId} onChange={(e) => saveGoogleClientId(e.target.value)}
+              placeholder="Google OAuth Client ID" style={{ ...inputStyle, marginBottom: 8 }}
+            />
+            <div style={{ color: FAINT, fontSize: 10, lineHeight: 1.5, marginBottom: 10 }}>
+              Create one free at console.cloud.google.com — new project → enable Gmail API → OAuth consent screen (Testing) → Credentials → OAuth client ID → Web application. This ID isn't secret, safe to store here.
+            </div>
+            {gmailConnected ? (
+              <button onClick={disconnectGmail} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: RUST, borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontSize: 12, marginBottom: 16 }}>Disconnect Gmail</button>
+            ) : (
+              <button onClick={connectGmail} disabled={!googleClientId.trim()} style={{ background: googleClientId.trim() ? PANEL2 : "transparent", border: `1px solid ${RULE}`, color: googleClientId.trim() ? PAPER : FAINT, borderRadius: 10, padding: "8px 14px", cursor: googleClientId.trim() ? "pointer" : "not-allowed", fontSize: 12, marginBottom: 8 }}>Connect Gmail</button>
+            )}
+            {gmailError && <div style={{ color: RUST, fontSize: 11, marginBottom: 8 }}>{gmailError}</div>}
+            {gmailConnected && <div style={{ color: SUCCESS, fontSize: 11, marginBottom: 16, display: "flex", alignItems: "center", gap: 4 }}><Check size={12} /> Connected — scan for bills from Finance → Spending.</div>}
 
             <SectionLabel>Notifications</SectionLabel>
             {notifPermission === "granted" ? (
@@ -591,7 +646,7 @@ export default function Dashboard() {
         <div className="ledger-page-content">
 
         {tab === "today" && (
-          <TodayTab items={items} categories={categories} doneToday={doneToday} percent={percent} toggleItem={toggleItem} addItem={addItem} removeItem={removeItem} targets={targets} meals={meals} alerts={alerts} onOpenReminders={() => setShowReminders(true)} />
+          <TodayTab items={items} categories={categories} doneToday={doneToday} percent={percent} toggleItem={toggleItem} addItem={addItem} removeItem={removeItem} targets={targets} meals={meals} alerts={alerts} onOpenReminders={() => setShowReminders(true)} workouts={workouts} />
         )}
         {tab === "workout" && <WorkoutTab workouts={workouts} setWorkouts={setWorkouts} />}
         {tab === "nutrition" && <NutritionTab targets={targets} setTargets={setTargets} meals={meals} setMeals={setMeals} />}
@@ -617,6 +672,20 @@ export default function Dashboard() {
           />
         )}
         </div>
+
+        {tab !== "assistant" && (
+          <button
+            className="ledger-bottom-nav"
+            onClick={() => setTab("assistant")}
+            style={{
+              position: "fixed", bottom: 86, right: 16, width: 50, height: 50, borderRadius: 25,
+              background: "#8B7FA6", border: "none", boxShadow: "0 4px 16px rgba(139,127,166,0.4)",
+              alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 15,
+            }}
+          >
+            <Sparkles size={20} color="#101312" />
+          </button>
+        )}
 
         <div className="ledger-bottom-nav" style={{
           position: "fixed", bottom: 0, left: 0, right: 0, background: PANEL, borderTop: `1px solid ${RULE}`,
@@ -816,12 +885,14 @@ function Onboarding({ onFinish, setTargets, requestNotifications, dietTypes, tog
   );
 }
 
-function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, removeItem, targets, meals, alerts, onOpenReminders }) {
+function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, removeItem, targets, meals, alerts, onOpenReminders, workouts }) {
   const [newLabel, setNewLabel] = useState("");
   const [newCat, setNewCat] = useState(categories[0] || "General");
 
   const todayProtein = meals.filter((m) => m.date === todayStr()).reduce((s, m) => s + m.protein, 0);
   const proteinPct = targets.protein ? Math.min(100, (todayProtein / targets.protein) * 100) : 0;
+  const todayWorkout = (workouts || []).find((w) => w.date === todayStr());
+  const thingsRemaining = items.length - doneToday.length;
 
   return (
     <div>
@@ -837,27 +908,37 @@ function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, 
           {alerts.length > 4 && <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>+{alerts.length - 4} more — tap to see all</div>}
         </Card>
       )}
-      <Card style={{ display: "flex", alignItems: "center", gap: 24, marginBottom: 20 }}>
-        <Gauge percent={percent} />
-        <div>
-          <SectionLabel>Today's completion</SectionLabel>
-          <div style={{ fontFamily: "Inter", fontSize: 20, fontWeight: 600 }}>
-            <LedgerNum value={doneToday.length} /> <span style={{ color: MUTED, fontWeight: 400 }}>of</span> <LedgerNum value={items.length} /> entries closed
-          </div>
-        </div>
+      <Card style={{ marginBottom: 16 }}>
+        <ProgressBar done={doneToday.length} total={items.length} />
       </Card>
 
-      {targets.protein > 0 && (
-        <Card style={{ marginBottom: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
-            <SectionLabel>Protein today</SectionLabel>
-            <span><LedgerNum value={todayProtein} positive={todayProtein <= targets.protein} /> <span style={{ color: MUTED }}>/ {targets.protein}g</span></span>
-          </div>
-          <div style={{ height: 5, background: RULE, borderRadius: 3, overflow: "hidden" }}>
-            <div style={{ width: `${proteinPct}%`, height: "100%", background: BRASS }} />
-          </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+        <Card style={{ padding: 16 }}>
+          <SectionLabel>Protein</SectionLabel>
+          {targets.protein > 0 ? (
+            <>
+              <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 2 }}><LedgerNum value={todayProtein} positive={todayProtein <= targets.protein} /><span style={{ color: MUTED, fontSize: 13, fontWeight: 400 }}> / {targets.protein}g</span></div>
+              <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>{Math.max(0, targets.protein - todayProtein)}g remaining</div>
+              <div style={{ height: 5, background: RULE, borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ width: `${proteinPct}%`, height: "100%", background: CAT_NUTRITION_COLOR, transition: "width 0.25s ease" }} />
+              </div>
+            </>
+          ) : (
+            <div style={{ color: FAINT, fontSize: 12 }}>Set a target in Nutrition</div>
+          )}
         </Card>
-      )}
+        <Card style={{ padding: 16 }}>
+          <SectionLabel>Workout</SectionLabel>
+          {todayWorkout ? (
+            <>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 2 }}>{todayWorkout.exercise}</div>
+              <div style={{ color: SUCCESS, fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}><CheckCircle2 size={12} /> Logged today</div>
+            </>
+          ) : (
+            <div style={{ color: FAINT, fontSize: 12 }}>Not logged yet</div>
+          )}
+        </Card>
+      </div>
 
       {categories.map((cat) => (
         <Card key={cat} style={{ marginBottom: 16 }}>
@@ -950,7 +1031,7 @@ function WorkoutTab({ workouts, setWorkouts }) {
             <button onClick={() => removeWorkout(w.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={12} /></button>
           </div>
         ))}
-        {workouts.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>No lifts logged yet.</div>}
+        {workouts.length === 0 && <EmptyState icon={Dumbbell} title="No workout logged" />}
       </Card>
     </div>
   );
@@ -1031,7 +1112,7 @@ function NutritionTab({ targets, setTargets, meals, setMeals }) {
             <button onClick={() => removeEntry(e.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={12} /></button>
           </div>
         ))}
-        {todayMeals.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>Nothing logged today.</div>}
+        {todayMeals.length === 0 && <EmptyState icon={UtensilsCrossed} title="Nothing logged yet" />}
       </Card>
     </div>
   );
@@ -1071,7 +1152,7 @@ function ReflectTab({ reflections, setReflections }) {
           <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{r.text}</div>
         </Card>
       ))}
-      {reflections.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>No entries yet.</div>}
+      {reflections.length === 0 && <EmptyState icon={NotebookPen} title="Nothing reflected yet" />}
     </div>
   );
 }
@@ -1509,6 +1590,10 @@ function FinanceTab({ spending, setSpending, accounts, setAccounts, holdings, se
 
 function SpendingSub({ spending, setSpending }) {
   const [form, setForm] = useState({ merchant: "", category: SPENDING_CATEGORIES[0], amount: "" });
+  const [candidates, setCandidates] = useState([]);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState("");
+
   const addEntry = async () => {
     if (!form.merchant.trim() || !form.amount) return;
     const row = await db.insertRow("spending", { date: todayStr(), merchant: form.merchant.trim(), category: form.category, amount: Number(form.amount) || 0 });
@@ -1520,8 +1605,47 @@ function SpendingSub({ spending, setSpending }) {
   const total = spending.reduce((s, e) => s + e.amount, 0);
   const todayTotal = spending.filter((s) => s.date === todayStr()).reduce((s, e) => s + e.amount, 0);
 
+  const runScan = async () => {
+    setScanning(true);
+    setScanError("");
+    try {
+      const found = await gmail.scanForBills();
+      setCandidates(found);
+    } catch (e) {
+      setScanError(gmail.hasValidToken() ? e.message : "Connect Gmail in Settings first.");
+    }
+    setScanning(false);
+  };
+
+  const confirmCandidate = async (c) => {
+    const row = await db.insertRow("spending", { date: c.date, merchant: c.merchant, category: "Groceries", amount: c.amount });
+    setSpending([row, ...spending]);
+    setCandidates(candidates.filter((x) => x.id !== c.id));
+  };
+  const ignoreCandidate = (c) => setCandidates(candidates.filter((x) => x.id !== c.id));
+
   return (
     <div>
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <SectionLabel>Scan Gmail for bills</SectionLabel>
+          <button onClick={runScan} disabled={scanning} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "4px 12px", cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
+            {scanning ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Scan
+          </button>
+        </div>
+        {scanError && <div style={{ color: RUST, fontSize: 11 }}>{scanError}</div>}
+        {!scanError && candidates.length === 0 && <div style={{ color: FAINT, fontSize: 11 }}>Finds recent receipts/invoices — you confirm each one before it's added.</div>}
+        {candidates.map((c) => (
+          <div key={c.id} style={{ background: PANEL2, borderRadius: 10, padding: 12, marginTop: 8 }}>
+            <div style={{ fontSize: 13, marginBottom: 8 }}>Found a purchase from <strong>{c.merchant}</strong> for <strong>${c.amount.toFixed(2)}</strong> — add to Finance?</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => confirmCandidate(c)} style={{ flex: 1, background: BRASS, border: "none", borderRadius: 8, padding: "6px", cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Confirm</button>
+              <button onClick={() => ignoreCandidate(c)} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: MUTED, borderRadius: 8, padding: "6px", cursor: "pointer", fontSize: 12 }}>Ignore</button>
+            </div>
+          </div>
+        ))}
+      </Card>
+
       <Card style={{ marginBottom: 16 }}>
         <SectionLabel>Log a purchase</SectionLabel>
         <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr auto", gap: 8 }}>
