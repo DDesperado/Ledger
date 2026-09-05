@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Check, Plus, Trash2, Send, Dumbbell, UtensilsCrossed, NotebookPen,
   Sparkles, ListChecks, Loader2, Wallet, ShoppingCart, Landmark, TrendingUp, BookOpen, RefreshCw, Settings, Download, Upload,
-  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2, X,
+  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2, X, Bell,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import * as db from "../lib/store";
@@ -142,6 +142,10 @@ export default function Dashboard() {
   const [shoppingList, setShoppingList] = useState([]);
   const [recipes, setRecipes] = useState([]);
   const [showMore, setShowMore] = useState(false);
+  const [reminders, setReminders] = useState([]);
+  const [showReminders, setShowReminders] = useState(false);
+  const [notifPermission, setNotifPermission] = useState(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     if (!displayName) { setLoading(false); return; }
@@ -171,6 +175,8 @@ export default function Dashboard() {
         rec = await db.fetchTable("recipes");
       }
       setRecipes(rec);
+      setReminders(await db.fetchTable("reminders"));
+      if (!getSetting("onboarded", "")) setShowOnboarding(true);
       setLoading(false);
     })();
   }, [displayName]);
@@ -180,6 +186,38 @@ export default function Dashboard() {
   const dateLabel = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
   const percent = items.length ? (doneToday.length / items.length) * 100 : 0;
   const categories = useMemo(() => [...new Set(items.map((i) => i.category))], [items]);
+
+  const lowStockItems = useMemo(() => kitchen.filter((k) => k.qty <= k.threshold), [kitchen]);
+  const alerts = useMemo(() => {
+    const list = [];
+    const today = todayStr();
+    for (const item of lowStockItems) {
+      list.push({ id: `stock-${item.id}`, kind: "stock", text: `${item.name} is running low (${item.qty}${item.unit} left)` });
+    }
+    for (const r of reminders) {
+      if (r.done) continue;
+      if (r.dueDate < today) list.push({ id: `rem-${r.id}`, kind: "overdue", text: `Overdue: ${r.title}` });
+      else if (r.dueDate === today) list.push({ id: `rem-${r.id}`, kind: "today", text: `Due today: ${r.title}` });
+    }
+    return list;
+  }, [lowStockItems, reminders]);
+
+  useEffect(() => {
+    if (notifPermission === "granted" && alerts.length > 0 && !loading) {
+      const key = "lastNotifiedCount";
+      const last = getSetting(key, "0");
+      if (String(alerts.length) !== last) {
+        new Notification("Ledger", { body: alerts.length === 1 ? alerts[0].text : `${alerts.length} things need your attention` });
+        setSetting(key, String(alerts.length));
+      }
+    }
+  }, [alerts, notifPermission, loading]);
+
+  const requestNotifications = async () => {
+    if (typeof Notification === "undefined") return;
+    const perm = await Notification.requestPermission();
+    setNotifPermission(perm);
+  };
 
   const toggleItem = async (itemId) => {
     const isDone = doneToday.includes(itemId);
@@ -196,6 +234,28 @@ export default function Dashboard() {
   const removeItem = async (id) => {
     await db.deleteRow("checklist_items", id);
     setItems(items.filter((i) => i.id !== id));
+  };
+
+  const addReminder = async (title, dueDate) => {
+    if (!title.trim() || !dueDate) return;
+    const row = await db.insertRow("reminders", { title: title.trim(), dueDate, done: false });
+    setReminders([row, ...reminders]);
+  };
+
+  const toggleReminder = async (id) => {
+    const r = reminders.find((x) => x.id === id);
+    const row = await db.updateRow("reminders", id, { done: !r.done });
+    setReminders(reminders.map((x) => (x.id === id ? row : x)));
+  };
+
+  const removeReminder = async (id) => {
+    await db.deleteRow("reminders", id);
+    setReminders(reminders.filter((r) => r.id !== id));
+  };
+
+  const finishOnboarding = () => {
+    setSetting("onboarded", "true");
+    setShowOnboarding(false);
   };
 
   const saveApiKey = (key) => {
@@ -282,13 +342,34 @@ export default function Dashboard() {
               {greeting}, <span style={{ fontStyle: "italic", fontWeight: 500 }}>{displayName}</span>.
             </div>
           </div>
-          <button onClick={() => setShowSettings((v) => !v)} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "6px 10px", display: "flex", alignItems: "center", gap: 4, color: MUTED, cursor: "pointer", fontSize: 12 }}>
-            <Settings size={13} /> settings
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setShowReminders(true)} style={{ position: "relative", background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "6px 10px", display: "flex", alignItems: "center", color: MUTED, cursor: "pointer" }}>
+              <Bell size={14} />
+              {alerts.length > 0 && (
+                <span style={{ position: "absolute", top: -4, right: -4, background: RUST, color: PAPER, borderRadius: 10, fontSize: 9, minWidth: 15, height: 15, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "IBM Plex Mono" }}>{alerts.length}</span>
+              )}
+            </button>
+            <button onClick={() => setShowSettings((v) => !v)} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "6px 10px", display: "flex", alignItems: "center", gap: 4, color: MUTED, cursor: "pointer", fontSize: 12 }}>
+              <Settings size={13} /> settings
+            </button>
+          </div>
         </div>
 
         {showSettings && (
           <Card style={{ marginBottom: 20 }}>
+            <SectionLabel>Notifications</SectionLabel>
+            {notifPermission === "granted" ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, color: VERDI, fontSize: 12, marginBottom: 16 }}>
+                <Check size={13} /> Enabled — you'll see alerts for low stock and due reminders when you open Ledger.
+              </div>
+            ) : notifPermission === "denied" ? (
+              <div style={{ color: MUTED, fontSize: 12, marginBottom: 16 }}>Blocked in your browser settings. You can still check the bell icon for alerts.</div>
+            ) : (
+              <div style={{ marginBottom: 16 }}>
+                <button onClick={requestNotifications} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 4, padding: "8px 14px", cursor: "pointer", fontSize: 12, marginBottom: 6 }}>Enable notifications</button>
+                <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5 }}>Only fires while Ledger is open — this isn't a background push service, so it won't reach you if the tab is closed.</div>
+              </div>
+            )}
             <SectionLabel>Anthropic API key (for the Assistant tab)</SectionLabel>
             <input
               type="password" value={apiKey} onChange={(e) => saveApiKey(e.target.value)}
@@ -342,7 +423,7 @@ export default function Dashboard() {
         <div className="ledger-page-content">
 
         {tab === "today" && (
-          <TodayTab items={items} categories={categories} doneToday={doneToday} percent={percent} toggleItem={toggleItem} addItem={addItem} removeItem={removeItem} targets={targets} meals={meals} />
+          <TodayTab items={items} categories={categories} doneToday={doneToday} percent={percent} toggleItem={toggleItem} addItem={addItem} removeItem={removeItem} targets={targets} meals={meals} alerts={alerts} onOpenReminders={() => setShowReminders(true)} />
         )}
         {tab === "workout" && <WorkoutTab workouts={workouts} setWorkouts={setWorkouts} />}
         {tab === "nutrition" && <NutritionTab targets={targets} setTargets={setTargets} meals={meals} setMeals={setMeals} />}
@@ -418,12 +499,132 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+
+        {showReminders && (
+          <RemindersPanel
+            alerts={alerts} reminders={reminders} onClose={() => setShowReminders(false)}
+            addReminder={addReminder} toggleReminder={toggleReminder} removeReminder={removeReminder}
+          />
+        )}
+
+        {showOnboarding && (
+          <Onboarding onFinish={finishOnboarding} setTargets={setTargets} requestNotifications={requestNotifications} />
+        )}
       </div>
     </div>
   );
 }
 
-function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, removeItem, targets, meals }) {
+function RemindersPanel({ alerts, reminders, onClose, addReminder, toggleReminder, removeReminder }) {
+  const [title, setTitle] = useState("");
+  const [dueDate, setDueDate] = useState(todayStr());
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 30, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: PANEL, borderTopLeftRadius: 12, borderTopRightRadius: 12, padding: "20px 16px calc(20px + env(safe-area-inset-bottom))", width: "100%", maxWidth: 720, maxHeight: "80vh", overflowY: "auto" }}>
+        <div style={{ width: 36, height: 4, background: RULE, borderRadius: 2, margin: "0 auto 16px" }} />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontFamily: "Fraunces", fontSize: 18, fontWeight: 600 }}>Alerts & reminders</div>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer" }}><X size={18} /></button>
+        </div>
+
+        {alerts.length > 0 ? (
+          <div style={{ marginBottom: 20 }}>
+            {alerts.map((a) => (
+              <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: `1px solid ${RULE}`, fontSize: 13 }}>
+                <AlertTriangle size={13} color={a.kind === "overdue" ? RUST : BRASS} />
+                {a.text}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ color: MUTED, fontSize: 13, marginBottom: 20 }}>Nothing needs attention right now.</div>
+        )}
+
+        <SectionLabel>Your reminders</SectionLabel>
+        <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr auto", gap: 8, marginBottom: 16 }}>
+          <input placeholder="Remind me to…" value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} />
+          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={inputStyle} />
+          <button onClick={() => { addReminder(title, dueDate); setTitle(""); }} style={{ background: BRASS, border: "none", borderRadius: 4, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+        </div>
+        {reminders.map((r) => (
+          <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${RULE}` }}>
+            <button onClick={() => toggleReminder(r.id)} style={{ width: 20, height: 20, borderRadius: 4, border: `1px solid ${r.done ? BRASS : MUTED}`, background: r.done ? BRASS : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+              {r.done && <Check size={13} color={INK} strokeWidth={3} />}
+            </button>
+            <span style={{ flex: 1, fontSize: 13, textDecoration: r.done ? "line-through" : "none", color: r.done ? MUTED : PAPER }}>{r.title}</span>
+            <span style={{ fontSize: 11, color: MUTED, fontFamily: "IBM Plex Mono" }}>{fmtDate(r.dueDate)}</span>
+            <button onClick={() => removeReminder(r.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={13} /></button>
+          </div>
+        ))}
+        {reminders.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>No reminders yet.</div>}
+      </div>
+    </div>
+  );
+}
+
+function Onboarding({ onFinish, setTargets, requestNotifications }) {
+  const [step, setStep] = useState(0);
+  const [focus, setFocus] = useState({ Health: true, Fitness: true, Food: true, Finance: true, Tasks: true });
+  const [proteinGoal, setProteinGoal] = useState("150");
+
+  const toggleFocus = (k) => setFocus({ ...focus, [k]: !focus[k] });
+
+  const finishSetup = async () => {
+    await db.upsertNutritionTargets({ calories: 2200, protein: Number(proteinGoal) || 150, carbs: 220, fat: 70 });
+    setTargets((t) => ({ ...t, protein: Number(proteinGoal) || 150 }));
+    onFinish();
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: INK, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter" }}>
+      <div style={{ width: 340, textAlign: "center" }}>
+        {step === 0 && (
+          <>
+            <div style={{ fontFamily: "Fraunces", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6 }}>Welcome to Ledger</div>
+            <div style={{ color: MUTED, fontSize: 14, marginBottom: 28 }}>Your personal operating system.</div>
+            <div style={{ color: MUTED, fontSize: 12, marginBottom: 20, textAlign: "left" }}>What do you want Ledger to help manage?</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28 }}>
+              {Object.keys(focus).map((k) => (
+                <button key={k} onClick={() => toggleFocus(k)} style={{
+                  display: "flex", alignItems: "center", gap: 10, background: focus[k] ? PANEL2 : "transparent",
+                  border: `1px solid ${focus[k] ? BRASS : RULE}`, borderRadius: 6, padding: "10px 14px", cursor: "pointer", color: PAPER, fontSize: 14,
+                }}>
+                  <span style={{ width: 16, height: 16, borderRadius: 4, border: `1px solid ${focus[k] ? BRASS : MUTED}`, background: focus[k] ? BRASS : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    {focus[k] && <Check size={11} color={INK} strokeWidth={3} />}
+                  </span>
+                  {k}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setStep(1)} style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 4, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Continue</button>
+            <button onClick={onFinish} style={{ width: "100%", background: "transparent", color: MUTED, border: "none", padding: "8px", fontSize: 13, cursor: "pointer" }}>Skip for now</button>
+          </>
+        )}
+        {step === 1 && (
+          <>
+            <div style={{ fontFamily: "Fraunces", fontWeight: 700, fontSize: 24, color: PAPER, marginBottom: 20 }}>Daily protein target</div>
+            <input type="number" value={proteinGoal} onChange={(e) => setProteinGoal(e.target.value)} style={{ width: "100%", background: PANEL, border: `1px solid ${RULE}`, borderRadius: 4, padding: "12px 14px", color: PAPER, fontFamily: "IBM Plex Mono", fontSize: 14, outline: "none", marginBottom: 24, boxSizing: "border-box", textAlign: "center" }} />
+            <button onClick={() => setStep(2)} style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 4, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Continue</button>
+            <button onClick={onFinish} style={{ width: "100%", background: "transparent", color: MUTED, border: "none", padding: "8px", fontSize: 13, cursor: "pointer" }}>Skip for now</button>
+          </>
+        )}
+        {step === 2 && (
+          <>
+            <div style={{ fontFamily: "Fraunces", fontWeight: 700, fontSize: 24, color: PAPER, marginBottom: 12 }}>Stay on top of things</div>
+            <div style={{ color: MUTED, fontSize: 13, marginBottom: 24, lineHeight: 1.5 }}>
+              Get alerted when you're low on groceries or a reminder's due — only while Ledger is open.
+            </div>
+            <button onClick={async () => { await requestNotifications(); finishSetup(); }} style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 4, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Enable notifications</button>
+            <button onClick={finishSetup} style={{ width: "100%", background: "transparent", color: MUTED, border: "none", padding: "8px", fontSize: 13, cursor: "pointer" }}>Skip for now</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, removeItem, targets, meals, alerts, onOpenReminders }) {
   const [newLabel, setNewLabel] = useState("");
   const [newCat, setNewCat] = useState(categories[0] || "General");
 
@@ -432,6 +633,18 @@ function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, 
 
   return (
     <div>
+      {alerts && alerts.length > 0 && (
+        <Card style={{ marginBottom: 16, cursor: "pointer" }} onClick={onOpenReminders}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <Bell size={14} color={BRASS} />
+            <SectionLabel>Priorities</SectionLabel>
+          </div>
+          {alerts.slice(0, 4).map((a) => (
+            <div key={a.id} style={{ fontSize: 13, marginBottom: 4, color: a.kind === "overdue" ? RUST : PAPER }}>{a.text}</div>
+          ))}
+          {alerts.length > 4 && <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>+{alerts.length - 4} more — tap to see all</div>}
+        </Card>
+      )}
       <Card style={{ display: "flex", alignItems: "center", gap: 24, marginBottom: 20 }}>
         <Gauge percent={percent} />
         <div>
