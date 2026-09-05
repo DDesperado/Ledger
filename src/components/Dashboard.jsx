@@ -10,6 +10,7 @@ import { getSetting, setSetting, exportAll, importAll } from "../lib/store";
 import * as gmail from "../lib/gmail";
 import { EXERCISES } from "../lib/exercises";
 import * as mealdb from "../lib/mealdb";
+import { fetchExerciseImage } from "../lib/exerciseImages";
 import { INK, PANEL, PANEL2, CARD, CARD_ELEVATED, RULE, PAPER, MUTED, FAINT, BRASS, VERDI, RUST, SUCCESS, WARNING, INFO, CAT_NUTRITION as CAT_NUTRITION_COLOR, inputStyle, uid, todayStr, fmtDate, fetchQuote, colorFor, DIETARY_TYPES, COMMON_ALLERGENS, recipeMatchesDiet, recipeMatchesAllergies } from "../lib/theme";
 
 const DEFAULT_ITEMS = [
@@ -86,6 +87,24 @@ function Card({ children, style }) {
       ...style,
     }}>
       {children}
+    </div>
+  );
+}
+
+function ExerciseThumb({ name, size = 32 }) {
+  const [image, setImage] = useState(undefined); // undefined = loading, null = no match found
+  useEffect(() => {
+    let active = true;
+    fetchExerciseImage(name).then((img) => { if (active) setImage(img); });
+    return () => { active = false; };
+  }, [name]);
+
+  if (image) {
+    return <img src={image} alt="" style={{ width: size, height: size, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />;
+  }
+  return (
+    <div style={{ width: size, height: size, borderRadius: 8, background: PANEL2, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      <Dumbbell size={size * 0.5} color={FAINT} />
     </div>
   );
 }
@@ -735,6 +754,7 @@ export default function Dashboard() {
             meals={meals} setMeals={setMeals}
             spending={spending}
             dietTypes={dietTypes} allergies={allergies} onEditDiet={() => { setShowSettings(true); setShowDietSettings(true); }}
+            apiKey={apiKey}
           />
         )}
         {tab === "assistant" && (
@@ -1102,6 +1122,7 @@ function WorkoutTab({ workouts, setWorkouts }) {
         <SectionLabel>History — {workouts.length} entries</SectionLabel>
         {workouts.slice(0, 25).map((w) => (
           <div key={w.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${RULE}`, fontSize: 13 }}>
+            <ExerciseThumb name={w.exercise} />
             <span style={{ color: MUTED, fontFamily: "IBM Plex Mono", fontSize: 11, width: 54 }}>{fmtDate(w.date)}</span>
             <span style={{ flex: 1 }}>{w.exercise}</span>
             <span style={{ fontFamily: "IBM Plex Mono", color: MUTED }}>{w.sets}×{w.reps}</span>
@@ -1235,7 +1256,7 @@ function ReflectTab({ reflections, setReflections }) {
   );
 }
 
-function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList, recipes, setRecipes, meals, setMeals, spending, dietTypes, allergies, onEditDiet }) {
+function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList, recipes, setRecipes, meals, setMeals, spending, dietTypes, allergies, onEditDiet, apiKey }) {
   const [sub, setSub] = useState("inventory");
   const low = kitchen.filter((k) => k.qty <= k.threshold);
 
@@ -1276,13 +1297,13 @@ function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList, recipe
       )}
 
       {sub === "inventory" && <InventorySub kitchen={kitchen} setKitchen={setKitchen} shoppingList={shoppingList} setShoppingList={setShoppingList} low={low} />}
-      {sub === "recipes" && <RecipesSub recipes={recipes} setRecipes={setRecipes} kitchen={kitchen} setKitchen={setKitchen} meals={meals} setMeals={setMeals} dietTypes={dietTypes} allergies={allergies} />}
+      {sub === "recipes" && <RecipesSub recipes={recipes} setRecipes={setRecipes} kitchen={kitchen} setKitchen={setKitchen} meals={meals} setMeals={setMeals} dietTypes={dietTypes} allergies={allergies} apiKey={apiKey} />}
       {sub === "shopping" && <ShoppingListSub shoppingList={shoppingList} setShoppingList={setShoppingList} kitchen={kitchen} setKitchen={setKitchen} dietTypes={dietTypes} allergies={allergies} />}
     </div>
   );
 }
 
-function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals, dietTypes, allergies }) {
+function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals, dietTypes, allergies, apiKey }) {
   const [confirmingId, setConfirmingId] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showBrowse, setShowBrowse] = useState(false);
@@ -1292,7 +1313,36 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
   const [browseResults, setBrowseResults] = useState([]);
   const [browseLoading, setBrowseLoading] = useState(false);
   const [previewMeal, setPreviewMeal] = useState(null);
+  const [estimatingId, setEstimatingId] = useState(null);
   const [form, setForm] = useState({ name: "", prepTime: "", calories: "", protein: "", carbs: "", fat: "", ingredients: [{ name: "", qty: "", unit: "" }], dietTags: [], allergens: [] });
+
+  const estimateMacros = async (recipe) => {
+    if (!apiKey) return;
+    setEstimatingId(recipe.id);
+    try {
+      const ingredientList = recipe.ingredients.map((i) => `${i.qty}${i.unit} ${i.name}`).join(", ");
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001", max_tokens: 200,
+          system: "Estimate rough nutrition for a home-cooked serving of the given recipe. Reply with ONLY a JSON object, no other text: {\"calories\": number, \"protein\": number, \"carbs\": number, \"fat\": number}",
+          messages: [{ role: "user", content: `Recipe: ${recipe.name}. Ingredients: ${ingredientList}` }],
+        }),
+      });
+      const data = await res.json();
+      const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+      const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
+      const row = await db.updateRow("recipes", recipe.id, {
+        calories: Math.round(parsed.calories) || 0, protein: Math.round(parsed.protein) || 0,
+        carbs: Math.round(parsed.carbs) || 0, fat: Math.round(parsed.fat) || 0,
+      });
+      setRecipes(recipes.map((r) => (r.id === recipe.id ? row : r)));
+    } catch {
+      // silently leave macros as-is if estimation fails — never show wrong numbers as if they were reliable
+    }
+    setEstimatingId(null);
+  };
 
   useEffect(() => {
     if (showBrowse && cuisines.length === 0) {
@@ -1335,7 +1385,7 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
     const ingredients = mealdb.parseIngredients(previewMeal);
     const row = await db.insertRow("recipes", {
       name: previewMeal.strMeal, prepTime: 30, calories: 0, protein: 0, carbs: 0, fat: 0,
-      ingredients, dietTags: [], allergens: [], source: "TheMealDB",
+      ingredients, dietTags: [], allergens: [], source: "TheMealDB", image: previewMeal.strMealThumb || null,
     });
     setRecipes([...recipes, row]);
     setPreviewMeal(null);
@@ -1483,24 +1533,32 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
       {withAvailability.map((recipe) => (
         <Card key={recipe.id} style={{ marginBottom: 16, borderColor: recipe.canMake ? VERDI : RULE }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-            <div>
-              <div style={{ fontFamily: "Inter", fontSize: 17, fontWeight: 600 }}>{recipe.name}</div>
-              <div style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>{recipe.prepTime} min</div>
-              {recipe.usesExpiring && <div style={{ color: WARNING, fontSize: 10, marginTop: 4 }}>Uses something expiring soon</div>}
-              {recipe.dietTags?.length > 0 && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-                  {recipe.dietTags.map((t) => <span key={t} style={{ background: PANEL2, color: BRASS, borderRadius: 8, padding: "1px 7px", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.05em" }}>{t}</span>)}
-                </div>
-              )}
+            <div style={{ display: "flex", gap: 12, flex: 1 }}>
+              {recipe.image && <img src={recipe.image} alt="" style={{ width: 56, height: 56, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />}
+              <div>
+                <div style={{ fontFamily: "Inter", fontSize: 17, fontWeight: 600 }}>{recipe.name}</div>
+                <div style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>{recipe.prepTime} min</div>
+                {recipe.usesExpiring && <div style={{ color: WARNING, fontSize: 10, marginTop: 4 }}>Uses something expiring soon</div>}
+                {recipe.dietTags?.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                    {recipe.dietTags.map((t) => <span key={t} style={{ background: PANEL2, color: BRASS, borderRadius: 8, padding: "1px 7px", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.05em" }}>{t}</span>)}
+                  </div>
+                )}
+              </div>
             </div>
             <button onClick={() => removeRecipe(recipe.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={13} /></button>
           </div>
 
-          <div style={{ display: "flex", gap: 14, marginBottom: 12, fontSize: 12 }}>
+          <div style={{ display: "flex", gap: 14, marginBottom: 12, fontSize: 12, alignItems: "center" }}>
             <span><LedgerNum value={recipe.protein} /> <span style={{ color: MUTED }}>P</span></span>
             <span><LedgerNum value={recipe.calories} /> <span style={{ color: MUTED }}>cal</span></span>
             <span><LedgerNum value={recipe.carbs} /> <span style={{ color: MUTED }}>C</span></span>
             <span><LedgerNum value={recipe.fat} /> <span style={{ color: MUTED }}>F</span></span>
+            {recipe.calories === 0 && apiKey && (
+              <button onClick={() => estimateMacros(recipe)} disabled={estimatingId === recipe.id} style={{ marginLeft: "auto", background: "transparent", border: `1px solid ${RULE}`, color: "#8B7FA6", borderRadius: 10, padding: "3px 10px", cursor: "pointer", fontSize: 10, display: "flex", alignItems: "center", gap: 4 }}>
+                {estimatingId === recipe.id ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />} Ask AI
+              </button>
+            )}
           </div>
 
           <div style={{ fontSize: 12, marginBottom: 12 }}>
@@ -2006,6 +2064,36 @@ function AccountsSub({ accounts, setAccounts, totalDebt }) {
 function DebtSub({ debts, setDebts, debtPayments, setDebtPayments }) {
   const [form, setForm] = useState({ name: "", balance: "", apr: "", minPayment: "", dueDay: "" });
   const [payAmounts, setPayAmounts] = useState({});
+  const [dueCandidates, setDueCandidates] = useState([]);
+  const [scanningDue, setScanningDue] = useState(false);
+  const [dueScanError, setDueScanError] = useState("");
+
+  const scanDueDates = async () => {
+    setScanningDue(true);
+    setDueScanError("");
+    try {
+      const found = await gmail.scanForDueDates();
+      setDueCandidates(found);
+    } catch (e) {
+      setDueScanError(gmail.hasValidToken() ? e.message : "Connect Gmail in Settings first.");
+    }
+    setScanningDue(false);
+  };
+
+  const confirmDueDate = async (c) => {
+    const day = c.dueDate ? new Date(c.dueDate).getDate() : null;
+    if (!day) return;
+    const existing = debts.find((d) => d.name.toLowerCase().includes(c.issuer.toLowerCase()) || c.issuer.toLowerCase().includes(d.name.toLowerCase()));
+    if (existing) {
+      const row = await db.updateRow("debts", existing.id, { dueDay: day });
+      setDebts(debts.map((d) => (d.id === existing.id ? row : d)));
+    } else {
+      const row = await db.insertRow("debts", { name: c.issuer, balance: 0, apr: 0, minPayment: 0, dueDay: day });
+      setDebts([...debts, row]);
+    }
+    setDueCandidates(dueCandidates.filter((x) => x.id !== c.id));
+  };
+  const ignoreDueDate = (c) => setDueCandidates(dueCandidates.filter((x) => x.id !== c.id));
 
   const addDebt = async () => {
     if (!form.name.trim() || !form.balance) return;
@@ -2046,6 +2134,31 @@ function DebtSub({ debts, setDebts, debtPayments, setDebtPayments }) {
         <SectionLabel>Total debt</SectionLabel>
         <div style={{ fontFamily: "Inter", fontSize: 30, fontWeight: 600, color: totalDebt > 0 ? RUST : PAPER }}>${totalDebt.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
         {totalMinPayments > 0 && <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>${totalMinPayments.toFixed(2)} in minimum payments due monthly</div>}
+      </Card>
+
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <SectionLabel>Scan Gmail for due dates</SectionLabel>
+          <button onClick={scanDueDates} disabled={scanningDue} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "4px 12px", cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
+            {scanningDue ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Scan
+          </button>
+        </div>
+        {dueScanError && <div style={{ color: RUST, fontSize: 11 }}>{dueScanError}</div>}
+        {!dueScanError && dueCandidates.length === 0 && <div style={{ color: FAINT, fontSize: 11 }}>Looks for statement/payment-due emails — best-effort, always asks before changing anything.</div>}
+        {dueCandidates.map((c) => (
+          <div key={c.id} style={{ background: PANEL2, borderRadius: 10, padding: 12, marginTop: 8 }}>
+            <div style={{ fontSize: 13, marginBottom: 4 }}>From <strong>{c.issuer}</strong></div>
+            {c.dueDate ? (
+              <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>Found a due date: <strong style={{ color: PAPER }}>{fmtDate(c.dueDate)}</strong> — set as this card's monthly due day?</div>
+            ) : (
+              <div style={{ fontSize: 12, color: FAINT, marginBottom: 8 }}>Couldn't confidently read a due date from this one — check it manually.</div>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              {c.dueDate && <button onClick={() => confirmDueDate(c)} style={{ flex: 1, background: BRASS, border: "none", borderRadius: 8, padding: "6px", cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Confirm</button>}
+              <button onClick={() => ignoreDueDate(c)} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: MUTED, borderRadius: 8, padding: "6px", cursor: "pointer", fontSize: 12 }}>Ignore</button>
+            </div>
+          </div>
+        ))}
       </Card>
 
       <Card style={{ marginBottom: 16 }}>

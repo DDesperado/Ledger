@@ -91,3 +91,48 @@ export async function scanForBills(maxResults = 12) {
   }
   return candidates;
 }
+
+// Best-effort due-date finder — bank/card statement emails use wildly
+// inconsistent formats, so this will miss some and occasionally misread
+// others. It only ever returns candidates for the user to confirm or
+// ignore; nothing is written automatically.
+function parseDueDate(text) {
+  const patterns = [
+    /due\s*(?:date)?\s*(?:is|:)?\s*(\w+ \d{1,2},? \d{4})/i,
+    /due\s*(?:date)?\s*(?:is|:)?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i,
+    /(\w+ \d{1,2},? \d{4})/,
+    /(\d{1,2}\/\d{1,2}\/\d{2,4})/,
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) {
+      const d = new Date(m[1]);
+      if (!isNaN(d)) return d.toISOString().slice(0, 10);
+    }
+  }
+  return null;
+}
+
+export async function scanForDueDates(maxResults = 10) {
+  const query = encodeURIComponent("(statement OR \"minimum payment\" OR \"payment due\") newer_than:45d");
+  const list = await gmailFetch(`messages?q=${query}&maxResults=${maxResults}`);
+  const messages = list.messages || [];
+  const candidates = [];
+
+  for (const m of messages) {
+    try {
+      const detail = await gmailFetch(`messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`);
+      const headers = detail.payload?.headers || [];
+      const subject = headers.find((h) => h.name === "Subject")?.value || "";
+      const from = headers.find((h) => h.name === "From")?.value || "";
+      const snippet = detail.snippet || "";
+      const issuerMatch = from.match(/^"?([^"<]+)"?\s*</) || from.match(/^([^<]+)/);
+      const issuer = (issuerMatch ? issuerMatch[1] : from).trim();
+      const dueDate = parseDueDate(`${subject} ${snippet}`);
+      candidates.push({ id: m.id, issuer, subject, snippet, dueDate });
+    } catch {
+      // skip messages that fail to parse
+    }
+  }
+  return candidates;
+}
