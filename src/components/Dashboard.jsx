@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Check, Plus, Trash2, Send, Dumbbell, UtensilsCrossed, NotebookPen,
   Sparkles, ListChecks, Loader2, Wallet, ShoppingCart, Landmark, TrendingUp, BookOpen, RefreshCw, Settings, Download, Upload,
-  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2,
+  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2, X,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import * as db from "../lib/store";
@@ -21,6 +21,21 @@ const DEFAULT_ITEMS = [
 const SPENDING_CATEGORIES = ["Groceries", "Rent", "Transport", "Dining", "Subscriptions", "School", "Fun", "Other"];
 const KITCHEN_CATEGORIES = ["Produce", "Dairy", "Meat", "Pantry", "Frozen", "Snacks", "Spices", "Other"];
 const KITCHEN_UNITS = ["", "g", "kg", "ml", "L", "pcs", "slices"];
+
+const DEFAULT_RECIPES = [
+  {
+    name: "Egg & Cheese Sandwich", prepTime: 10, calories: 380, protein: 22, carbs: 32, fat: 18,
+    ingredients: [{ name: "Eggs", qty: 2, unit: "pcs" }, { name: "Bread", qty: 2, unit: "slices" }, { name: "Cheese", qty: 40, unit: "g" }],
+  },
+  {
+    name: "Chicken Rice Bowl", prepTime: 20, calories: 610, protein: 42, carbs: 72, fat: 14,
+    ingredients: [{ name: "Chicken", qty: 150, unit: "g" }, { name: "Rice", qty: 200, unit: "g" }, { name: "Vegetables", qty: 100, unit: "g" }],
+  },
+  {
+    name: "Protein Oats", prepTime: 8, calories: 420, protein: 32, carbs: 48, fat: 10,
+    ingredients: [{ name: "Oats", qty: 60, unit: "g" }, { name: "Protein Powder", qty: 30, unit: "g" }, { name: "Milk", qty: 250, unit: "ml" }],
+  },
+];
 
 function Gauge({ percent }) {
   const pct = Math.max(0, Math.min(100, percent));
@@ -125,6 +140,7 @@ export default function Dashboard() {
   const [chat, setChat] = useState([]);
   const [kitchen, setKitchen] = useState([]);
   const [shoppingList, setShoppingList] = useState([]);
+  const [recipes, setRecipes] = useState([]);
   const [showMore, setShowMore] = useState(false);
 
   useEffect(() => {
@@ -149,6 +165,12 @@ export default function Dashboard() {
       setChat(await db.fetchTable("chat_messages"));
       setKitchen(await db.fetchTable("kitchen"));
       setShoppingList(await db.fetchTable("shopping_list"));
+      let rec = await db.fetchTable("recipes");
+      if (rec.length === 0) {
+        for (const r of DEFAULT_RECIPES) await db.insertRow("recipes", r);
+        rec = await db.fetchTable("recipes");
+      }
+      setRecipes(rec);
       setLoading(false);
     })();
   }, [displayName]);
@@ -329,7 +351,13 @@ export default function Dashboard() {
           <FinanceTab spending={spending} setSpending={setSpending} accounts={accounts} setAccounts={setAccounts} holdings={holdings} setHoldings={setHoldings} research={research} setResearch={setResearch} />
         )}
         {tab === "kitchen" && (
-          <KitchenTab kitchen={kitchen} setKitchen={setKitchen} shoppingList={shoppingList} setShoppingList={setShoppingList} />
+          <KitchenTab
+            kitchen={kitchen} setKitchen={setKitchen}
+            shoppingList={shoppingList} setShoppingList={setShoppingList}
+            recipes={recipes} setRecipes={setRecipes}
+            meals={meals} setMeals={setMeals}
+            spending={spending}
+          />
         )}
         {tab === "assistant" && (
           <AssistantTab chat={chat} setChat={setChat} context={{ items, doneToday, workouts, meals, targets, reflections, spending, accounts, holdings, displayName }} apiKey={apiKey} />
@@ -643,15 +671,19 @@ function ReflectTab({ reflections, setReflections }) {
   );
 }
 
-function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList }) {
+function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList, recipes, setRecipes, meals, setMeals, spending }) {
   const [sub, setSub] = useState("inventory");
   const low = kitchen.filter((k) => k.qty <= k.threshold);
 
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const grocerySpend = spending.filter((s) => s.category === "Groceries" && s.date.startsWith(thisMonth)).reduce((sum, s) => sum + s.amount, 0);
+
   return (
     <div>
-      <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 16, flexWrap: "wrap" }}>
         {[
           { id: "inventory", label: "Inventory" },
+          { id: "recipes", label: "Recipes" },
           { id: "shopping", label: `Shopping${shoppingList.filter((s) => !s.purchased).length ? ` (${shoppingList.filter((s) => !s.purchased).length})` : ""}` },
         ].map((s) => {
           const active = sub === s.id;
@@ -663,19 +695,171 @@ function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList }) {
           );
         })}
       </div>
-      {sub === "inventory" && <InventorySub kitchen={kitchen} setKitchen={setKitchen} shoppingList={shoppingList} setShoppingList={setShoppingList} low={low} />}
-      {sub === "shopping" && <ShoppingListSub shoppingList={shoppingList} setShoppingList={setShoppingList} kitchen={kitchen} setKitchen={setKitchen} />}
 
-      <Card style={{ opacity: 0.7, marginTop: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-          <ChefHat size={14} color={MUTED} />
-          <SectionLabel>Recipe suggestions — coming next</SectionLabel>
+      {grocerySpend > 0 && (
+        <Card style={{ marginBottom: 16 }}>
+          <SectionLabel>Grocery spend this month</SectionLabel>
+          <div style={{ fontFamily: "Fraunces", fontSize: 24, fontWeight: 600 }}><LedgerNum value={`$${grocerySpend.toFixed(2)}`} /></div>
+        </Card>
+      )}
+
+      {sub === "inventory" && <InventorySub kitchen={kitchen} setKitchen={setKitchen} shoppingList={shoppingList} setShoppingList={setShoppingList} low={low} />}
+      {sub === "recipes" && <RecipesSub recipes={recipes} setRecipes={setRecipes} kitchen={kitchen} setKitchen={setKitchen} meals={meals} setMeals={setMeals} />}
+      {sub === "shopping" && <ShoppingListSub shoppingList={shoppingList} setShoppingList={setShoppingList} kitchen={kitchen} setKitchen={setKitchen} />}
+    </div>
+  );
+}
+
+function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals }) {
+  const [confirmingId, setConfirmingId] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ name: "", prepTime: "", calories: "", protein: "", carbs: "", fat: "", ingredients: [{ name: "", qty: "", unit: "" }] });
+
+  const findKitchenMatch = (ingredientName) => kitchen.find((k) => k.name.toLowerCase() === ingredientName.toLowerCase());
+
+  const withAvailability = useMemo(() => {
+    return recipes.map((r) => {
+      const checked = r.ingredients.map((ing) => {
+        const match = findKitchenMatch(ing.name);
+        const have = match ? match.qty : 0;
+        return { ...ing, have, available: have >= ing.qty };
+      });
+      const missing = checked.filter((c) => !c.available);
+      return { ...r, checked, missing, canMake: missing.length === 0 };
+    }).sort((a, b) => a.missing.length - b.missing.length);
+  }, [recipes, kitchen]);
+
+  const cookRecipe = async (recipe) => {
+    let updatedKitchen = kitchen;
+    for (const ing of recipe.checked) {
+      const match = findKitchenMatch(ing.name);
+      if (match) {
+        const newQty = Math.max(0, match.qty - ing.qty);
+        const row = await db.updateRow("kitchen", match.id, { qty: newQty });
+        updatedKitchen = updatedKitchen.map((k) => (k.id === match.id ? row : k));
+      }
+    }
+    setKitchen(updatedKitchen);
+
+    const mealRow = await db.insertRow("nutrition_entries", {
+      date: todayStr(), name: recipe.name, calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: recipe.fat,
+    });
+    setMeals([mealRow, ...meals]);
+    setConfirmingId(null);
+  };
+
+  const addIngredientRow = () => setForm({ ...form, ingredients: [...form.ingredients, { name: "", qty: "", unit: "" }] });
+  const updateIngredientRow = (i, field, value) => {
+    const next = form.ingredients.map((ing, idx) => (idx === i ? { ...ing, [field]: value } : ing));
+    setForm({ ...form, ingredients: next });
+  };
+  const removeIngredientRow = (i) => setForm({ ...form, ingredients: form.ingredients.filter((_, idx) => idx !== i) });
+
+  const saveRecipe = async () => {
+    if (!form.name.trim()) return;
+    const validIngredients = form.ingredients.filter((ing) => ing.name.trim());
+    const row = await db.insertRow("recipes", {
+      name: form.name.trim(), prepTime: Number(form.prepTime) || 0,
+      calories: Number(form.calories) || 0, protein: Number(form.protein) || 0, carbs: Number(form.carbs) || 0, fat: Number(form.fat) || 0,
+      ingredients: validIngredients.map((ing) => ({ name: ing.name.trim(), qty: Number(ing.qty) || 0, unit: ing.unit })),
+    });
+    setRecipes([...recipes, row]);
+    setForm({ name: "", prepTime: "", calories: "", protein: "", carbs: "", fat: "", ingredients: [{ name: "", qty: "", unit: "" }] });
+    setShowAdd(false);
+  };
+
+  const removeRecipe = async (id) => {
+    await db.deleteRow("recipes", id);
+    setRecipes(recipes.filter((r) => r.id !== id));
+  };
+
+  return (
+    <div>
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <ChefHat size={14} color={BRASS} />
+          <SectionLabel>Tonight's options — sorted by what you can already make</SectionLabel>
         </div>
-        <div style={{ color: MUTED, fontSize: 12, lineHeight: 1.5 }}>
-          Phase 2 connects this to Nutrition: recipes built from what's actually in your inventory, with
-          automatic ingredient deduction when you cook something.
-        </div>
+        <div style={{ color: MUTED, fontSize: 11 }}>Prioritized by ingredients you already have in Kitchen.</div>
       </Card>
+
+      {withAvailability.map((recipe) => (
+        <Card key={recipe.id} style={{ marginBottom: 16, borderColor: recipe.canMake ? VERDI : RULE }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+            <div>
+              <div style={{ fontFamily: "Fraunces", fontSize: 17, fontWeight: 600 }}>{recipe.name}</div>
+              <div style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>{recipe.prepTime} min</div>
+            </div>
+            <button onClick={() => removeRecipe(recipe.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={13} /></button>
+          </div>
+
+          <div style={{ display: "flex", gap: 14, marginBottom: 12, fontSize: 12 }}>
+            <span><LedgerNum value={recipe.protein} /> <span style={{ color: MUTED }}>P</span></span>
+            <span><LedgerNum value={recipe.calories} /> <span style={{ color: MUTED }}>cal</span></span>
+            <span><LedgerNum value={recipe.carbs} /> <span style={{ color: MUTED }}>C</span></span>
+            <span><LedgerNum value={recipe.fat} /> <span style={{ color: MUTED }}>F</span></span>
+          </div>
+
+          <div style={{ fontSize: 12, marginBottom: 12 }}>
+            {recipe.checked.map((ing, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, color: ing.available ? MUTED : RUST }}>
+                {ing.available ? <Check size={12} color={VERDI} /> : <X size={12} color={RUST} />}
+                {ing.qty}{ing.unit} {ing.name}
+              </div>
+            ))}
+          </div>
+
+          {confirmingId === recipe.id ? (
+            <div style={{ background: PANEL2, borderRadius: 4, padding: 12 }}>
+              <div style={{ fontSize: 12, color: MUTED, marginBottom: 10 }}>This will deduct the available ingredients above from Kitchen and log this meal to Nutrition.</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => cookRecipe(recipe)} style={{ flex: 1, background: BRASS, border: "none", borderRadius: 4, padding: "8px", cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Make it</button>
+                <button onClick={() => setConfirmingId(null)} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: MUTED, borderRadius: 4, padding: "8px", cursor: "pointer", fontSize: 12 }}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmingId(recipe.id)} style={{ width: "100%", background: recipe.canMake ? BRASS : PANEL2, color: recipe.canMake ? INK : MUTED, border: recipe.canMake ? "none" : `1px solid ${RULE}`, borderRadius: 4, padding: "8px", cursor: "pointer", fontWeight: 600, fontSize: 12 }}>
+              {recipe.canMake ? "Cook this" : `Missing ${recipe.missing.length} ingredient${recipe.missing.length > 1 ? "s" : ""}`}
+            </button>
+          )}
+        </Card>
+      ))}
+
+      {showAdd ? (
+        <Card>
+          <SectionLabel>New recipe</SectionLabel>
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 8, marginBottom: 8 }}>
+            <input placeholder="Recipe name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inputStyle} />
+            <input placeholder="Prep time (min)" type="number" value={form.prepTime} onChange={(e) => setForm({ ...form, prepTime: e.target.value })} style={inputStyle} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
+            <input placeholder="Calories" type="number" value={form.calories} onChange={(e) => setForm({ ...form, calories: e.target.value })} style={inputStyle} />
+            <input placeholder="Protein" type="number" value={form.protein} onChange={(e) => setForm({ ...form, protein: e.target.value })} style={inputStyle} />
+            <input placeholder="Carbs" type="number" value={form.carbs} onChange={(e) => setForm({ ...form, carbs: e.target.value })} style={inputStyle} />
+            <input placeholder="Fat" type="number" value={form.fat} onChange={(e) => setForm({ ...form, fat: e.target.value })} style={inputStyle} />
+          </div>
+          <SectionLabel>Ingredients</SectionLabel>
+          {form.ingredients.map((ing, i) => (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "1.6fr 0.8fr 0.8fr auto", gap: 8, marginBottom: 8 }}>
+              <input placeholder="Ingredient (must match Kitchen name)" value={ing.name} onChange={(e) => updateIngredientRow(i, "name", e.target.value)} style={inputStyle} />
+              <input placeholder="Qty" type="number" value={ing.qty} onChange={(e) => updateIngredientRow(i, "qty", e.target.value)} style={inputStyle} />
+              <select value={ing.unit} onChange={(e) => updateIngredientRow(i, "unit", e.target.value)} style={inputStyle}>
+                {KITCHEN_UNITS.map((u) => <option key={u} value={u}>{u || "—"}</option>)}
+              </select>
+              <button onClick={() => removeIngredientRow(i)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer" }}><Trash2 size={13} /></button>
+            </div>
+          ))}
+          <button onClick={addIngredientRow} style={{ background: "transparent", border: `1px dashed ${RULE}`, color: MUTED, borderRadius: 4, padding: "6px 12px", cursor: "pointer", fontSize: 12, marginBottom: 12 }}>+ Add ingredient</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={saveRecipe} style={{ flex: 1, background: BRASS, border: "none", borderRadius: 4, padding: "10px", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Save recipe</button>
+            <button onClick={() => setShowAdd(false)} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: MUTED, borderRadius: 4, padding: "10px", cursor: "pointer", fontSize: 13 }}>Cancel</button>
+          </div>
+        </Card>
+      ) : (
+        <button onClick={() => setShowAdd(true)} style={{ width: "100%", background: "transparent", border: `1px dashed ${RULE}`, color: MUTED, borderRadius: 6, padding: "12px", cursor: "pointer", fontSize: 13 }}>
+          + Add your own recipe
+        </button>
+      )}
     </div>
   );
 }
