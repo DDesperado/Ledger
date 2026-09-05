@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Check, Plus, Trash2, Send, Dumbbell, UtensilsCrossed, NotebookPen,
   Sparkles, ListChecks, Loader2, Wallet, ShoppingCart, Landmark, TrendingUp, BookOpen, RefreshCw, Settings, Download, Upload,
+  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import * as db from "../lib/store";
@@ -18,6 +19,8 @@ const DEFAULT_ITEMS = [
 ];
 
 const SPENDING_CATEGORIES = ["Groceries", "Rent", "Transport", "Dining", "Subscriptions", "School", "Fun", "Other"];
+const KITCHEN_CATEGORIES = ["Produce", "Dairy", "Meat", "Pantry", "Frozen", "Snacks", "Spices", "Other"];
+const KITCHEN_UNITS = ["", "g", "kg", "ml", "L", "pcs", "slices"];
 
 function Gauge({ percent }) {
   const pct = Math.max(0, Math.min(100, percent));
@@ -120,6 +123,9 @@ export default function Dashboard() {
   const [holdings, setHoldings] = useState([]);
   const [research, setResearch] = useState([]);
   const [chat, setChat] = useState([]);
+  const [kitchen, setKitchen] = useState([]);
+  const [shoppingList, setShoppingList] = useState([]);
+  const [showMore, setShowMore] = useState(false);
 
   useEffect(() => {
     if (!displayName) { setLoading(false); return; }
@@ -141,6 +147,8 @@ export default function Dashboard() {
       setHoldings(await db.fetchTable("holdings"));
       setResearch(await db.fetchTable("research_notes"));
       setChat(await db.fetchTable("chat_messages"));
+      setKitchen(await db.fetchTable("kitchen"));
+      setShoppingList(await db.fetchTable("shopping_list"));
       setLoading(false);
     })();
   }, [displayName]);
@@ -228,14 +236,19 @@ export default function Dashboard() {
     return <div style={{ minHeight: "100vh", background: INK, display: "flex", alignItems: "center", justifyContent: "center" }}><Loader2 className="animate-spin" color={MUTED} size={22} /></div>;
   }
 
-  const TABS = [
+  const PRIMARY_TABS = [
     { id: "today", label: "Today", icon: ListChecks },
+    { id: "kitchen", label: "Kitchen", icon: ChefHat },
     { id: "workout", label: "Workout", icon: Dumbbell },
+    { id: "finance", label: "Finance", icon: Wallet },
+  ];
+  const MORE_TABS = [
     { id: "nutrition", label: "Nutrition", icon: UtensilsCrossed },
     { id: "reflect", label: "Reflect", icon: NotebookPen },
-    { id: "finance", label: "Finance", icon: Wallet },
     { id: "assistant", label: "Assistant", icon: Sparkles },
   ];
+  const ALL_TABS = [...PRIMARY_TABS, ...MORE_TABS];
+  const lowStockCount = kitchen.filter((k) => k.qty <= k.threshold).length;
 
   return (
     <div style={{ minHeight: "100vh", background: INK, fontFamily: "Inter", color: PAPER }}>
@@ -275,19 +288,36 @@ export default function Dashboard() {
           </Card>
         )}
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, borderBottom: `1px solid ${RULE}`, marginBottom: 24 }}>
-          {TABS.map((t) => {
+        <style>{`
+          .ledger-top-nav { display: flex; }
+          .ledger-bottom-nav { display: none; }
+          @media (max-width: 680px) {
+            .ledger-top-nav { display: none; }
+            .ledger-bottom-nav { display: flex; }
+            .ledger-page-content { padding-bottom: 76px; }
+          }
+        `}</style>
+
+        <div className="ledger-top-nav" style={{ flexWrap: "wrap", gap: 4, borderBottom: `1px solid ${RULE}`, marginBottom: 24 }}>
+          {ALL_TABS.map((t) => {
             const Icon = t.icon, active = tab === t.id;
             return (
               <button key={t.id} onClick={() => setTab(t.id)} style={{
                 display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none",
                 borderBottom: active ? `2px solid ${BRASS}` : "2px solid transparent",
                 color: active ? PAPER : MUTED, padding: "10px 12px", cursor: "pointer", fontWeight: 500, fontSize: 13, whiteSpace: "nowrap",
-                transition: "color 0.15s ease, border-color 0.15s ease",
-              }}><Icon size={14} /> {t.label}</button>
+                transition: "color 0.15s ease, border-color 0.15s ease", position: "relative",
+              }}>
+                <Icon size={14} /> {t.label}
+                {t.id === "kitchen" && lowStockCount > 0 && (
+                  <span style={{ background: RUST, color: PAPER, borderRadius: 10, fontSize: 10, padding: "1px 6px", fontFamily: "IBM Plex Mono" }}>{lowStockCount}</span>
+                )}
+              </button>
             );
           })}
         </div>
+
+        <div className="ledger-page-content">
 
         {tab === "today" && (
           <TodayTab items={items} categories={categories} doneToday={doneToday} percent={percent} toggleItem={toggleItem} addItem={addItem} removeItem={removeItem} targets={targets} meals={meals} />
@@ -298,8 +328,67 @@ export default function Dashboard() {
         {tab === "finance" && (
           <FinanceTab spending={spending} setSpending={setSpending} accounts={accounts} setAccounts={setAccounts} holdings={holdings} setHoldings={setHoldings} research={research} setResearch={setResearch} />
         )}
+        {tab === "kitchen" && (
+          <KitchenTab kitchen={kitchen} setKitchen={setKitchen} shoppingList={shoppingList} setShoppingList={setShoppingList} />
+        )}
         {tab === "assistant" && (
           <AssistantTab chat={chat} setChat={setChat} context={{ items, doneToday, workouts, meals, targets, reflections, spending, accounts, holdings, displayName }} apiKey={apiKey} />
+        )}
+        </div>
+
+        <div className="ledger-bottom-nav" style={{
+          position: "fixed", bottom: 0, left: 0, right: 0, background: PANEL, borderTop: `1px solid ${RULE}`,
+          padding: "8px 4px calc(8px + env(safe-area-inset-bottom))", justifyContent: "space-around", zIndex: 20,
+          boxShadow: "0 -4px 16px rgba(0,0,0,0.3)",
+        }}>
+          {PRIMARY_TABS.map((t) => {
+            const Icon = t.icon, active = tab === t.id;
+            return (
+              <button key={t.id} onClick={() => setTab(t.id)} style={{
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "transparent",
+                border: "none", color: active ? BRASS : MUTED, cursor: "pointer", fontSize: 10, padding: "4px 8px",
+                position: "relative", transition: "color 0.15s ease",
+              }}>
+                <Icon size={19} />
+                {t.label}
+                {t.id === "kitchen" && lowStockCount > 0 && (
+                  <span style={{ position: "absolute", top: 0, right: 2, background: RUST, width: 7, height: 7, borderRadius: "50%" }} />
+                )}
+              </button>
+            );
+          })}
+          <button onClick={() => setShowMore(true)} style={{
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "transparent",
+            border: "none", color: MORE_TABS.some((t) => t.id === tab) ? BRASS : MUTED, cursor: "pointer", fontSize: 10, padding: "4px 8px",
+          }}>
+            <MoreHorizontal size={19} />
+            More
+          </button>
+        </div>
+
+        {showMore && (
+          <div onClick={() => setShowMore(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 30, display: "flex", alignItems: "flex-end" }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ background: PANEL, borderTopLeftRadius: 12, borderTopRightRadius: 12, padding: "20px 16px calc(20px + env(safe-area-inset-bottom))", width: "100%" }}>
+              <div style={{ width: 36, height: 4, background: RULE, borderRadius: 2, margin: "0 auto 16px" }} />
+              {MORE_TABS.map((t) => {
+                const Icon = t.icon;
+                return (
+                  <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }} style={{
+                    display: "flex", alignItems: "center", gap: 12, width: "100%", background: "transparent", border: "none",
+                    color: PAPER, padding: "14px 8px", cursor: "pointer", fontSize: 15, borderBottom: `1px solid ${RULE}`,
+                  }}>
+                    <Icon size={18} color={BRASS} /> {t.label}
+                  </button>
+                );
+              })}
+              <button onClick={() => { setShowSettings(true); setShowMore(false); }} style={{
+                display: "flex", alignItems: "center", gap: 12, width: "100%", background: "transparent", border: "none",
+                color: PAPER, padding: "14px 8px", cursor: "pointer", fontSize: 15,
+              }}>
+                <Settings size={18} color={BRASS} /> Settings
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -550,6 +639,230 @@ function ReflectTab({ reflections, setReflections }) {
         </Card>
       ))}
       {reflections.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>No entries yet.</div>}
+    </div>
+  );
+}
+
+function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList }) {
+  const [sub, setSub] = useState("inventory");
+  const low = kitchen.filter((k) => k.qty <= k.threshold);
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
+        {[
+          { id: "inventory", label: "Inventory" },
+          { id: "shopping", label: `Shopping${shoppingList.filter((s) => !s.purchased).length ? ` (${shoppingList.filter((s) => !s.purchased).length})` : ""}` },
+        ].map((s) => {
+          const active = sub === s.id;
+          return (
+            <button key={s.id} onClick={() => setSub(s.id)} style={{
+              background: active ? PANEL2 : "transparent", border: `1px solid ${active ? BRASS : RULE}`,
+              color: active ? PAPER : MUTED, borderRadius: 16, padding: "5px 12px", cursor: "pointer", fontSize: 12,
+            }}>{s.label}</button>
+          );
+        })}
+      </div>
+      {sub === "inventory" && <InventorySub kitchen={kitchen} setKitchen={setKitchen} shoppingList={shoppingList} setShoppingList={setShoppingList} low={low} />}
+      {sub === "shopping" && <ShoppingListSub shoppingList={shoppingList} setShoppingList={setShoppingList} kitchen={kitchen} setKitchen={setKitchen} />}
+
+      <Card style={{ opacity: 0.7, marginTop: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <ChefHat size={14} color={MUTED} />
+          <SectionLabel>Recipe suggestions — coming next</SectionLabel>
+        </div>
+        <div style={{ color: MUTED, fontSize: 12, lineHeight: 1.5 }}>
+          Phase 2 connects this to Nutrition: recipes built from what's actually in your inventory, with
+          automatic ingredient deduction when you cook something.
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function InventorySub({ kitchen, setKitchen, shoppingList, setShoppingList, low }) {
+  const [form, setForm] = useState({ name: "", category: KITCHEN_CATEGORIES[0], qty: "", unit: "", threshold: "" });
+
+  const addItem = async () => {
+    if (!form.name.trim()) return;
+    const row = await db.insertRow("kitchen", {
+      name: form.name.trim(), category: form.category, qty: Number(form.qty) || 0,
+      unit: form.unit, threshold: Number(form.threshold) || 1,
+    });
+    setKitchen([...kitchen, row]);
+    setForm({ name: "", category: form.category, qty: "", unit: form.unit, threshold: "" });
+  };
+
+  const adjustQty = async (item, delta) => {
+    const newQty = Math.max(0, item.qty + delta);
+    const row = await db.updateRow("kitchen", item.id, { qty: newQty });
+    setKitchen(kitchen.map((k) => (k.id === item.id ? row : k)));
+  };
+
+  const removeItem = async (id) => {
+    await db.deleteRow("kitchen", id);
+    setKitchen(kitchen.filter((k) => k.id !== id));
+  };
+
+  const addAllLowToShoppingList = async () => {
+    const existingNames = new Set(shoppingList.filter((s) => !s.purchased).map((s) => s.name.toLowerCase()));
+    const toAdd = low.filter((k) => !existingNames.has(k.name.toLowerCase()));
+    let next = shoppingList;
+    for (const item of toAdd) {
+      const row = await db.insertRow("shopping_list", { name: item.name, category: item.category, purchased: false, fromLowStock: true });
+      next = [row, ...next];
+    }
+    setShoppingList(next);
+  };
+
+  const byCategory = useMemo(() => {
+    const map = {};
+    kitchen.forEach((k) => { (map[k.category] = map[k.category] || []).push(k); });
+    return map;
+  }, [kitchen]);
+
+  return (
+    <div>
+      {low.length > 0 && (
+        <Card style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <AlertTriangle size={14} color={RUST} />
+              <SectionLabel>Running low</SectionLabel>
+            </div>
+            <button onClick={addAllLowToShoppingList} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 12, color: BRASS, fontSize: 11, padding: "3px 10px", cursor: "pointer" }}>
+              Add to shopping list
+            </button>
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.8 }}>
+            {low.map((k) => <div key={k.id}><LedgerNum value={k.name} positive={false} /> <span style={{ color: MUTED }}>— {k.qty}{k.unit} left</span></div>)}
+          </div>
+        </Card>
+      )}
+
+      <Card style={{ marginBottom: 16 }}>
+        <SectionLabel>Add a kitchen item</SectionLabel>
+        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 0.8fr 0.7fr 0.8fr auto", gap: 8 }}>
+          <input placeholder="e.g. Eggs" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inputStyle} />
+          <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={inputStyle}>
+            {KITCHEN_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <input placeholder="Qty" type="number" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} style={inputStyle} />
+          <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} style={inputStyle}>
+            {KITCHEN_UNITS.map((u) => <option key={u} value={u}>{u || "—"}</option>)}
+          </select>
+          <input placeholder="Low at" type="number" value={form.threshold} onChange={(e) => setForm({ ...form, threshold: e.target.value })} style={inputStyle} />
+          <button onClick={addItem} style={{ background: BRASS, border: "none", borderRadius: 4, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+        </div>
+      </Card>
+
+      {Object.entries(byCategory).map(([cat, catItems]) => (
+        <Card key={cat} style={{ marginBottom: 16 }}>
+          <SectionLabel><span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: colorFor(cat), display: "inline-block" }} />{cat}</span></SectionLabel>
+          {catItems.map((item) => {
+            const isLow = item.qty <= item.threshold;
+            return (
+              <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${RULE}` }}>
+                <div style={{ flex: 1, fontSize: 13 }}>{item.name}</div>
+                <button onClick={() => adjustQty(item, -1)} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 4, width: 26, height: 26, cursor: "pointer" }}>–</button>
+                <span style={{ fontFamily: "IBM Plex Mono", width: 50, textAlign: "center", fontSize: 12 }}><LedgerNum value={`${item.qty}${item.unit}`} positive={!isLow} /></span>
+                <button onClick={() => adjustQty(item, 1)} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 4, width: 26, height: 26, cursor: "pointer" }}>+</button>
+                <button onClick={() => removeItem(item.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={13} /></button>
+              </div>
+            );
+          })}
+        </Card>
+      ))}
+      {kitchen.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>No kitchen items tracked yet.</div>}
+    </div>
+  );
+}
+
+function ShoppingListSub({ shoppingList, setShoppingList, kitchen, setKitchen }) {
+  const [form, setForm] = useState({ name: "", category: KITCHEN_CATEGORIES[0] });
+
+  const addItem = async () => {
+    if (!form.name.trim()) return;
+    const row = await db.insertRow("shopping_list", { name: form.name.trim(), category: form.category, purchased: false });
+    setShoppingList([row, ...shoppingList]);
+    setForm({ name: "", category: form.category });
+  };
+
+  const togglePurchased = async (item) => {
+    const nowPurchased = !item.purchased;
+    const row = await db.updateRow("shopping_list", item.id, { purchased: nowPurchased });
+    setShoppingList(shoppingList.map((s) => (s.id === item.id ? row : s)));
+
+    if (nowPurchased) {
+      // Restock in Kitchen: bump qty if the item already exists there, otherwise create it.
+      const existing = kitchen.find((k) => k.name.toLowerCase() === item.name.toLowerCase());
+      if (existing) {
+        const updated = await db.updateRow("kitchen", existing.id, { qty: existing.qty + 1 });
+        setKitchen(kitchen.map((k) => (k.id === existing.id ? updated : k)));
+      } else {
+        const created = await db.insertRow("kitchen", { name: item.name, category: item.category || "Other", qty: 1, unit: "", threshold: 1 });
+        setKitchen([...kitchen, created]);
+      }
+    }
+  };
+
+  const removeItem = async (id) => {
+    await db.deleteRow("shopping_list", id);
+    setShoppingList(shoppingList.filter((s) => s.id !== id));
+  };
+
+  const byCategory = useMemo(() => {
+    const map = {};
+    shoppingList.filter((s) => !s.purchased).forEach((s) => { (map[s.category || "Other"] = map[s.category || "Other"] || []).push(s); });
+    return map;
+  }, [shoppingList]);
+
+  const purchasedRecently = shoppingList.filter((s) => s.purchased).slice(0, 10);
+
+  return (
+    <div>
+      <Card style={{ marginBottom: 16 }}>
+        <SectionLabel>Add to list</SectionLabel>
+        <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr auto", gap: 8 }}>
+          <input placeholder="e.g. Bananas" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && addItem()} style={inputStyle} />
+          <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={inputStyle}>
+            {KITCHEN_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <button onClick={addItem} style={{ background: BRASS, border: "none", borderRadius: 4, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+        </div>
+      </Card>
+
+      {Object.entries(byCategory).map(([cat, catItems]) => (
+        <Card key={cat} style={{ marginBottom: 16 }}>
+          <SectionLabel><span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: colorFor(cat), display: "inline-block" }} />{cat}</span></SectionLabel>
+          {catItems.map((item) => (
+            <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${RULE}` }}>
+              <button onClick={() => togglePurchased(item)} style={{ width: 20, height: 20, borderRadius: 4, border: `1px solid ${MUTED}`, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 13 }}>{item.name}</span>
+              {item.fromLowStock && <span style={{ fontSize: 10, color: RUST, fontFamily: "IBM Plex Mono" }}>low stock</span>}
+              <button onClick={() => removeItem(item.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={13} /></button>
+            </div>
+          ))}
+        </Card>
+      ))}
+      {Object.keys(byCategory).length === 0 && <div style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>Your shopping list is empty.</div>}
+
+      {purchasedRecently.length > 0 && (
+        <Card style={{ opacity: 0.6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <CheckCircle2 size={14} color={VERDI} />
+            <SectionLabel>Recently purchased</SectionLabel>
+          </div>
+          {purchasedRecently.map((item) => (
+            <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", fontSize: 12, color: MUTED, textDecoration: "line-through" }}>
+              <button onClick={() => togglePurchased(item)} style={{ width: 16, height: 16, borderRadius: 4, border: `1px solid ${BRASS}`, background: BRASS, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                <Check size={11} color={INK} strokeWidth={3} />
+              </button>
+              <span style={{ flex: 1 }}>{item.name}</span>
+            </div>
+          ))}
+        </Card>
+      )}
     </div>
   );
 }
