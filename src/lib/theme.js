@@ -1,40 +1,40 @@
-// Layered dark surfaces
-export const INK = "#101312";
-export const PANEL = "#171B19";
-export const CARD = "#1D2320";
-export const CARD_ELEVATED = "#242B27";
+// Layered dark forest surfaces
+export const INK = "#0D1310";
+export const PANEL = "#141C17";
+export const CARD = "#1A2420";
+export const CARD_ELEVATED = "#212D26";
 export const PANEL2 = CARD; // legacy alias used across components
 export const RULE = "rgba(242,240,232,0.08)";
 
 // Typography
 export const PAPER = "#F2F0E8";
-export const MUTED = "#B8B9AE";
-export const FAINT = "#777C75";
-export const DISABLED = "#555B55";
+export const MUTED = "#A9B0A5";
+export const FAINT = "#6B756D";
+export const DISABLED = "#4A524C";
 
 // Brand accents
-export const BRASS = "#C6A15B";
-export const VERDI = "#5F9F8B";
-export const VERDI_DEEP = "#376B60";
+export const BRASS = "#C9A464";
+export const VERDI = "#7BA88B";
+export const VERDI_DEEP = "#3F5C4C";
 
 // Semantic
-export const SUCCESS = "#6FAF8B";
+export const SUCCESS = "#7BA88B";
 export const WARNING = "#D1A85A";
 export const RUST = "#C96B63"; // danger
 export const INFO = "#7197B8";
 
 // Per-module identity colors
-export const CAT_TODAY = "#C6A15B";
-export const CAT_WORKOUT = "#5F9F8B";
+export const CAT_TODAY = "#C9A464";
+export const CAT_WORKOUT = "#7BA88B";
 export const CAT_NUTRITION = "#C69A62";
-export const CAT_KITCHEN = "#789B78";
-export const CAT_FINANCE = "#C6A15B";
+export const CAT_KITCHEN = "#7BA88B";
+export const CAT_FINANCE = "#C9A464";
 export const CAT_REFLECT = "#7189A0";
-export const CAT_ASSISTANT = "#8B7FA6";
+export const CAT_ASSISTANT = "#C9A464";
 
-// A curated palette that stays in the Ledger tonal family — used to
+// A curated palette that stays in the brand's tonal family — used to
 // color-code categories, macros, moods, and account types consistently.
-export const PALETTE = ["#C6A15B", "#5F9F8B", "#C96B63", "#7197B8", "#8B7FA6", "#789B78", "#C69A62", "#7189A0"];
+export const PALETTE = ["#C9A464", "#7BA88B", "#C96B63", "#7197B8", "#B08FC7", "#7BA88B", "#C69A62", "#7189A0"];
 
 export function colorFor(key) {
   let hash = 0;

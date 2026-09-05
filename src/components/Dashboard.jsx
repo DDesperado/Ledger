@@ -41,6 +41,18 @@ const DEFAULT_RECIPES = [
   },
 ];
 
+function AurenMark({ size = 56, color = BRASS }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" fill="none">
+      <circle cx="50" cy="50" r="30" stroke={color} strokeWidth="2.2" />
+      <circle cx="50" cy="26" r="2.6" fill={color} />
+      <line x1="50" y1="29" x2="50" y2="66" stroke={color} strokeWidth="2.2" />
+      <path d="M50 55 C 40 55, 33 50, 30 41 C 40 41, 47 46, 50 55 Z" stroke={color} strokeWidth="2.2" fill="none" strokeLinejoin="round" />
+      <path d="M50 55 C 60 55, 67 50, 70 41 C 60 41, 53 46, 50 55 Z" stroke={color} strokeWidth="2.2" fill="none" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function ProgressBar({ done, total, label, color = BRASS }) {
   const pct = total ? Math.round((done / total) * 100) : 0;
   return (
@@ -156,7 +168,7 @@ function buildAssistantSystemPrompt(context) {
   const dietLine = context.dietTypes?.length ? `Diet: ${context.dietTypes.join(", ")}.` : "";
   const allergyLine = context.allergies?.length ? `Allergies (never suggest these): ${context.allergies.join(", ")}.` : "";
 
-  return `You are the assistant embedded in ${name}'s personal "Ledger" app — a calm, direct daily-accounting coach covering habits, fitness, nutrition, kitchen, and personal finance. Keep replies short (2-5 sentences) unless asked for more. Today's snapshot: ${doneToday}/${totalItems} checklist items done, ${cals} calories logged, $${spentToday.toFixed(2)} spent today, last workout: ${lastWorkout ? `${lastWorkout.exercise} ${lastWorkout.weight}lb on ${lastWorkout.date}` : "none logged"}, last reflection mood: ${lastReflection ? lastReflection.mood : "none"}, net worth: $${netWorth.toFixed(2)}, holdings: ${holdingsSummary}, low stock: ${lowStock.join(", ") || "none"}. ${dietLine} ${allergyLine} You are not a licensed financial advisor — give factual, educational perspective rather than confident buy/sell recommendations. When the user asks you to add, log, or remind something, use the matching tool rather than just saying you will.`;
+  return `You are the assistant embedded in ${name}'s personal "AUREN" app — a calm, direct daily-accounting coach covering habits, fitness, nutrition, kitchen, and personal finance. Keep replies short (2-5 sentences) unless asked for more. Today's snapshot: ${doneToday}/${totalItems} checklist items done, ${cals} calories logged, $${spentToday.toFixed(2)} spent today, last workout: ${lastWorkout ? `${lastWorkout.exercise} ${lastWorkout.weight}lb on ${lastWorkout.date}` : "none logged"}, last reflection mood: ${lastReflection ? lastReflection.mood : "none"}, net worth: $${netWorth.toFixed(2)}, holdings: ${holdingsSummary}, low stock: ${lowStock.join(", ") || "none"}. ${dietLine} ${allergyLine} You are not a licensed financial advisor — give factual, educational perspective rather than confident buy/sell recommendations. When the user asks you to add, log, or remind something, use the matching tool rather than just saying you will.`;
 }
 
 async function callAssistantRaw(apiMessages, system, apiKey) {
@@ -333,7 +345,7 @@ export default function Dashboard() {
       const key = "lastNotifiedCount";
       const last = getSetting(key, "0");
       if (String(alerts.length) !== last) {
-        new Notification("Ledger", { body: alerts.length === 1 ? alerts[0].text : `${alerts.length} things need your attention` });
+        new Notification("AUREN", { body: alerts.length === 1 ? alerts[0].text : `${alerts.length} things need your attention` });
         setSetting(key, String(alerts.length));
       }
     }
@@ -468,7 +480,7 @@ export default function Dashboard() {
         importAll(reader.result);
         window.location.reload();
       } catch {
-        alert("That file doesn't look like a valid Ledger backup.");
+        alert("That file doesn't look like a valid AUREN backup.");
       }
     };
     reader.readAsText(file);
@@ -478,8 +490,9 @@ export default function Dashboard() {
     return (
       <div style={{ minHeight: "100vh", background: INK, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter" }}>
         <div style={{ width: 320, textAlign: "center" }}>
-          <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6 }}>Ledger</div>
-          <div style={{ color: MUTED, fontSize: 13, marginBottom: 24 }}>a daily accounting of you</div>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}><AurenMark size={64} /></div>
+          <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6, letterSpacing: "0.08em" }}>AUREN</div>
+          <div style={{ color: MUTED, fontSize: 13, marginBottom: 24 }}>Your life. In balance.</div>
           <input
             autoFocus value={nameInput} onChange={(e) => setNameInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && nameInput.trim()) { setSetting("displayName", nameInput.trim()); setDisplayName(nameInput.trim()); } }}
@@ -490,7 +503,7 @@ export default function Dashboard() {
             onClick={() => { if (nameInput.trim()) { setSetting("displayName", nameInput.trim()); setDisplayName(nameInput.trim()); } }}
             style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer" }}
           >
-            Open my ledger
+            Enter AUREN
           </button>
           <div style={{ color: MUTED, fontSize: 11, marginTop: 20, lineHeight: 1.5 }}>
             Everything you enter stays on this device only — nothing is sent anywhere except the Assistant tab, if you add your own API key.
@@ -578,7 +591,7 @@ export default function Dashboard() {
 
             <SectionLabel>Integrations — Gmail</SectionLabel>
             <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5, marginBottom: 10 }}>
-              Read-only access to find bills and receipts. Ledger never sees your password, and you can disconnect anytime.
+              Read-only access to find bills and receipts. AUREN never sees your password, and you can disconnect anytime.
             </div>
             <input
               value={googleClientId} onChange={(e) => saveGoogleClientId(e.target.value)}
@@ -598,14 +611,14 @@ export default function Dashboard() {
             <SectionLabel>Notifications</SectionLabel>
             {notifPermission === "granted" ? (
               <div style={{ display: "flex", alignItems: "center", gap: 6, color: VERDI, fontSize: 12, marginBottom: 16 }}>
-                <Check size={13} /> Enabled — you'll see alerts for low stock and due reminders when you open Ledger.
+                <Check size={13} /> Enabled — you'll see alerts for low stock and due reminders when you open AUREN.
               </div>
             ) : notifPermission === "denied" ? (
               <div style={{ color: MUTED, fontSize: 12, marginBottom: 16 }}>Blocked in your browser settings. You can still check the bell icon for alerts.</div>
             ) : (
               <div style={{ marginBottom: 16 }}>
                 <button onClick={requestNotifications} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontSize: 12, marginBottom: 6 }}>Enable notifications</button>
-                <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5 }}>Only fires while Ledger is open — this isn't a background push service, so it won't reach you if the tab is closed.</div>
+                <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5 }}>Only fires while AUREN is open — this isn't a background push service, so it won't reach you if the tab is closed.</div>
               </div>
             )}
             <SectionLabel>Anthropic API key (for the Assistant tab)</SectionLabel>
@@ -842,9 +855,9 @@ function Onboarding({ onFinish, setTargets, requestNotifications, dietTypes, tog
       <div style={{ width: 340, textAlign: "center" }}>
         {step === 0 && (
           <>
-            <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6 }}>Welcome to Ledger</div>
+            <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6 }}>Welcome to AUREN</div>
             <div style={{ color: MUTED, fontSize: 14, marginBottom: 28 }}>Your personal operating system.</div>
-            <div style={{ color: MUTED, fontSize: 12, marginBottom: 20, textAlign: "left" }}>What do you want Ledger to help manage?</div>
+            <div style={{ color: MUTED, fontSize: 12, marginBottom: 20, textAlign: "left" }}>What do you want AUREN to help manage?</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28 }}>
               {Object.keys(focus).map((k) => (
                 <button key={k} onClick={() => toggleFocus(k)} style={{
@@ -893,7 +906,7 @@ function Onboarding({ onFinish, setTargets, requestNotifications, dietTypes, tog
           <>
             <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 24, color: PAPER, marginBottom: 12 }}>Stay on top of things</div>
             <div style={{ color: MUTED, fontSize: 13, marginBottom: 24, lineHeight: 1.5 }}>
-              Get alerted when you're low on groceries or a reminder's due — only while Ledger is open.
+              Get alerted when you're low on groceries or a reminder's due — only while AUREN is open.
             </div>
             <button onClick={async () => { await requestNotifications(); finishSetup(); }} style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Enable notifications</button>
             <button onClick={finishSetup} style={{ width: "100%", background: "transparent", color: MUTED, border: "none", padding: "8px", fontSize: 13, cursor: "pointer" }}>Skip for now</button>
@@ -2033,7 +2046,7 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction }) {
     return (
       <Card style={{ textAlign: "center", padding: 40 }}>
         <Sparkles size={22} color="#8B7FA6" style={{ marginBottom: 12 }} />
-        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Ledger AI</div>
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>AUREN AI</div>
         <div style={{ color: MUTED, fontSize: 13, lineHeight: 1.6 }}>
           Add your Anthropic API key in <strong style={{ color: PAPER }}>settings</strong> (top right) to turn this on.
           It's free to create a key at console.anthropic.com — just set a small spend cap once you're there.
@@ -2047,7 +2060,7 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction }) {
       <div style={{ padding: "14px 16px", borderBottom: `1px solid ${RULE}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Sparkles size={15} color="#8B7FA6" />
-          <div style={{ fontSize: 14, fontWeight: 600 }}>Ledger AI</div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>AUREN AI</div>
         </div>
         {ttsSupported && (
           <button onClick={toggleSpeak} title={speakEnabled ? "Replies spoken aloud" : "Enable spoken replies"} style={{ background: "transparent", border: "none", color: speakEnabled ? BRASS : MUTED, cursor: "pointer" }}>
@@ -2085,7 +2098,7 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction }) {
         {loading && <Loader2 className="animate-spin" size={16} color={MUTED} />}
       </div>
       <div style={{ display: "flex", gap: 8, padding: 12, borderTop: `1px solid ${RULE}` }}>
-        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder={listening ? "Listening…" : "Message your ledger…"} style={{ flex: 1, background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "10px 12px", fontSize: 13, outline: "none" }} />
+        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder={listening ? "Listening…" : "Message AUREN…"} style={{ flex: 1, background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "10px 12px", fontSize: 13, outline: "none" }} />
         {voiceSupported && (
           <button onClick={toggleListening} style={{ background: listening ? RUST : PANEL2, border: `1px solid ${RULE}`, borderRadius: 10, padding: "0 12px", cursor: "pointer", display: "flex", alignItems: "center" }}>
             <Mic size={15} color={listening ? PAPER : MUTED} />

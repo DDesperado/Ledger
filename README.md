@@ -1,4 +1,4 @@
-# Ledger
+# AUREN
 
 No signups outside GitHub. Deploys automatically on every push. Installable to a
 phone home screen like a real app (PWA).
@@ -17,7 +17,7 @@ phone home screen like a real app (PWA).
 1. Repo → **Settings** → **Pages** → set **Source** to **GitHub Actions**.
 2. Push to `main` (or just wait if you just pushed) — check the **Actions** tab,
    should go green in under a minute.
-3. Live at: **https://ddesperado.github.io/Ledger/**
+3. Live at: **https://ddesperado.github.io/AUREN/**
 
 ## Getting your friends onto it
 Send them the link above. On iPhone: open in Safari → Share → **Add to Home Screen**.

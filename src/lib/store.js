@@ -3,7 +3,17 @@
 
 import { uid } from "./theme";
 
-const KEY = "ledger-data-v1";
+const KEY = "auren-data-v1";
+const LEGACY_KEY = "ledger-data-v1";
+
+function migrateLegacyData() {
+  try {
+    if (localStorage.getItem(KEY)) return; // already migrated or fresh install
+    const legacy = localStorage.getItem(LEGACY_KEY);
+    if (legacy) localStorage.setItem(KEY, legacy);
+  } catch {}
+}
+migrateLegacyData();
 
 function readAll() {
   try {
