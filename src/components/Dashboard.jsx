@@ -2,16 +2,20 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import {
   Check, Plus, Trash2, Send, Dumbbell, UtensilsCrossed, NotebookPen,
   Sparkles, ListChecks, Loader2, Wallet, ShoppingCart, Landmark, TrendingUp, BookOpen, RefreshCw, Settings, Download, Upload,
-  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2, X, Bell, Mic, Volume2, VolumeX, CreditCard, Search,
+  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2, X, Bell, Mic, Volume2, VolumeX, CreditCard, Search, LogOut,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import * as db from "../lib/store";
-import { getSetting, setSetting, exportAll, importAll } from "../lib/store";
+import * as db from "../lib/cloudStore";
+import { setCurrentUser } from "../lib/cloudStore";
+import * as localDb from "../lib/store";
+import { auth, googleProvider } from "../lib/firebase";
+import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import * as gmail from "../lib/gmail";
 import { EXERCISES } from "../lib/exercises";
 import * as mealdb from "../lib/mealdb";
 import { fetchExerciseImage } from "../lib/exerciseImages";
 import { INK, PANEL, PANEL2, CARD, CARD_ELEVATED, RULE, PAPER, MUTED, FAINT, BRASS, VERDI, RUST, SUCCESS, WARNING, INFO, CAT_NUTRITION as CAT_NUTRITION_COLOR, inputStyle, uid, todayStr, fmtDate, fetchQuote, colorFor, DIETARY_TYPES, COMMON_ALLERGENS, recipeMatchesDiet, recipeMatchesAllergies } from "../lib/theme";
+
 
 const DEFAULT_ITEMS = [
   { category: "Morning", label: "Clear inbox & plan the day" },
@@ -291,10 +295,11 @@ function describeAction(toolUse) {
 export default function Dashboard() {
   const [tab, setTab] = useState("today");
   const [loading, setLoading] = useState(true);
-  const [displayName, setDisplayName] = useState(getSetting("displayName", ""));
-  const [nameInput, setNameInput] = useState("");
+  const [authUser, setAuthUser] = useState(undefined); // undefined = checking, null = signed out
   const [showSettings, setShowSettings] = useState(false);
-  const [apiKey, setApiKey] = useState(getSetting("apiKey", ""));
+  const [apiKey, setApiKey] = useState("");
+  const [speakEnabled, setSpeakEnabled] = useState(false);
+  const [pendingMigration, setPendingMigration] = useState(null);
 
   const [items, setItems] = useState([]);
   const [doneToday, setDoneToday] = useState([]);
@@ -318,49 +323,101 @@ export default function Dashboard() {
   const [showReminders, setShowReminders] = useState(false);
   const [notifPermission, setNotifPermission] = useState(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [dietTypes, setDietTypes] = useState(JSON.parse(getSetting("dietTypes", "[]")));
-  const [allergies, setAllergies] = useState(JSON.parse(getSetting("allergies", "[]")));
+  const [dietTypes, setDietTypes] = useState([]);
+  const [allergies, setAllergies] = useState([]);
   const [showDietSettings, setShowDietSettings] = useState(false);
-  const [googleClientId, setGoogleClientId] = useState(getSetting("googleClientId", ""));
+  const [googleClientId, setGoogleClientId] = useState("");
   const [gmailConnected, setGmailConnected] = useState(false);
   const [gmailError, setGmailError] = useState("");
 
+  const displayName = authUser?.displayName?.split(" ")[0] || "there";
+
   useEffect(() => {
-    if (!displayName) { setLoading(false); return; }
+    const unsub = onAuthStateChanged(auth, (user) => setAuthUser(user));
+    return unsub;
+  }, []);
+
+  const loadAllData = async () => {
+    let it = await db.fetchChecklistItems();
+    if (it.length === 0) {
+      for (const d of DEFAULT_ITEMS) await db.insertRow("checklist_items", d);
+      it = await db.fetchChecklistItems();
+    }
+    setItems(it);
+    setDoneToday(await db.fetchCompletionsForDate(todayStr()));
+    setAllCompletions(await db.fetchTable("checklist_completions"));
+    setWorkouts(await db.fetchTable("workouts"));
+    const t = await db.fetchNutritionTargets();
+    if (t) setTargets(t);
+    setMeals(await db.fetchTable("nutrition_entries"));
+    setReflections(await db.fetchTable("reflections"));
+    setSpending(await db.fetchTable("spending"));
+    setAccounts(await db.fetchTable("accounts"));
+    setHoldings(await db.fetchTable("holdings"));
+    setResearch(await db.fetchTable("research_notes"));
+    setChat(await db.fetchTable("chat_messages"));
+    setKitchen(await db.fetchTable("kitchen"));
+    setShoppingList(await db.fetchTable("shopping_list"));
+    let rec = await db.fetchTable("recipes");
+    if (rec.length === 0) {
+      for (const r of DEFAULT_RECIPES) await db.insertRow("recipes", r);
+      rec = await db.fetchTable("recipes");
+    }
+    setRecipes(rec);
+    setReminders(await db.fetchTable("reminders"));
+    setDebts(await db.fetchTable("debts"));
+    setDebtPayments(await db.fetchTable("debt_payments"));
+
+    const settings = await db.fetchSettings();
+    setApiKey(settings.apiKey || "");
+    setGoogleClientId(settings.googleClientId || "");
+    setDietTypes(settings.dietTypes || []);
+    setAllergies(settings.allergies || []);
+    setSpeakEnabled(!!settings.speakReplies);
+    if (!settings.onboarded) setShowOnboarding(true);
+
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (authUser === undefined) return; // still checking auth state
+    if (authUser === null) { setLoading(false); return; } // signed out
     (async () => {
-      let it = await db.fetchChecklistItems();
-      if (it.length === 0) {
-        for (const d of DEFAULT_ITEMS) await db.insertRow("checklist_items", d);
-        it = await db.fetchChecklistItems();
+      setCurrentUser(authUser.uid);
+      const existing = await db.fetchChecklistItems();
+      if (existing.length === 0) {
+        const localBlob = JSON.parse(localDb.exportAll());
+        const hasLocalData = Object.keys(localBlob).some((k) => Array.isArray(localBlob[k]) && localBlob[k].length > 0);
+        if (hasLocalData) {
+          setPendingMigration(localBlob);
+          setLoading(false);
+          return;
+        }
       }
-      setItems(it);
-      setDoneToday(await db.fetchCompletionsForDate(todayStr()));
-      setAllCompletions(await db.fetchTable("checklist_completions"));
-      setWorkouts(await db.fetchTable("workouts"));
-      const t = await db.fetchNutritionTargets();
-      if (t) setTargets(t);
-      setMeals(await db.fetchTable("nutrition_entries"));
-      setReflections(await db.fetchTable("reflections"));
-      setSpending(await db.fetchTable("spending"));
-      setAccounts(await db.fetchTable("accounts"));
-      setHoldings(await db.fetchTable("holdings"));
-      setResearch(await db.fetchTable("research_notes"));
-      setDebts(await db.fetchTable("debts"));
-      setDebtPayments(await db.fetchTable("debt_payments"));
-      setChat(await db.fetchTable("chat_messages"));
-      setKitchen(await db.fetchTable("kitchen"));
-      setShoppingList(await db.fetchTable("shopping_list"));
-      let rec = await db.fetchTable("recipes");
-      if (rec.length === 0) {
-        for (const r of DEFAULT_RECIPES) await db.insertRow("recipes", r);
-        rec = await db.fetchTable("recipes");
-      }
-      setRecipes(rec);
-      setReminders(await db.fetchTable("reminders"));
-      if (!getSetting("onboarded", "")) setShowOnboarding(true);
-      setLoading(false);
+      await loadAllData();
     })();
-  }, [displayName]);
+  }, [authUser]);
+
+  const confirmMigration = async () => {
+    setLoading(true);
+    await db.migrateLocalDataToCloud(pendingMigration);
+    setPendingMigration(null);
+    await loadAllData();
+  };
+
+  const skipMigration = async () => {
+    setPendingMigration(null);
+    setLoading(true);
+    await loadAllData();
+  };
+
+  const signIn = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (e) {
+      console.error("Sign-in failed", e);
+    }
+  };
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -400,13 +457,12 @@ export default function Dashboard() {
     return list;
   }, [lowStockItems, reminders]);
 
+  const lastNotifiedCountRef = useRef(0);
   useEffect(() => {
     if (notifPermission === "granted" && alerts.length > 0 && !loading) {
-      const key = "lastNotifiedCount";
-      const last = getSetting(key, "0");
-      if (String(alerts.length) !== last) {
+      if (alerts.length !== lastNotifiedCountRef.current) {
         new Notification("AUREN", { body: alerts.length === 1 ? alerts[0].text : `${alerts.length} things need your attention` });
-        setSetting(key, String(alerts.length));
+        lastNotifiedCountRef.current = alerts.length;
       }
     }
   }, [alerts, notifPermission, loading]);
@@ -452,7 +508,7 @@ export default function Dashboard() {
   };
 
   const finishOnboarding = () => {
-    setSetting("onboarded", "true");
+    db.setSettingField("onboarded", true);
     setShowOnboarding(false);
   };
 
@@ -486,24 +542,24 @@ export default function Dashboard() {
 
   const saveApiKey = (key) => {
     setApiKey(key);
-    setSetting("apiKey", key);
+    db.setSettingField("apiKey", key);
   };
 
   const toggleDietType = (type) => {
     const next = dietTypes.includes(type) ? dietTypes.filter((d) => d !== type) : [...dietTypes, type];
     setDietTypes(next);
-    setSetting("dietTypes", JSON.stringify(next));
+    db.setSettingField("dietTypes", next);
   };
 
   const toggleAllergy = (allergy) => {
     const next = allergies.includes(allergy) ? allergies.filter((a) => a !== allergy) : [...allergies, allergy];
     setAllergies(next);
-    setSetting("allergies", JSON.stringify(next));
+    db.setSettingField("allergies", next);
   };
 
   const saveGoogleClientId = (id) => {
     setGoogleClientId(id);
-    setSetting("googleClientId", id);
+    db.setSettingField("googleClientId", id);
   };
 
   const connectGmail = async () => {
@@ -522,11 +578,17 @@ export default function Dashboard() {
   };
 
   const downloadBackup = () => {
-    const blob = new Blob([exportAll()], { type: "application/json" });
+    const snapshot = {
+      checklist_items: items, workouts, nutrition_entries: meals, reflections, spending,
+      accounts, holdings, research_notes: research, chat_messages: chat, kitchen,
+      shopping_list: shoppingList, recipes, reminders, debts, debt_payments: debtPayments,
+      nutrition_targets: targets, settings: { apiKey, googleClientId, dietTypes, allergies },
+    };
+    const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `ledger-backup-${todayStr()}.json`;
+    a.download = `auren-backup-${todayStr()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -535,9 +597,11 @@ export default function Dashboard() {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
-        importAll(reader.result);
+        const parsed = JSON.parse(reader.result);
+        setLoading(true);
+        await db.migrateLocalDataToCloud(parsed);
         window.location.reload();
       } catch {
         alert("That file doesn't look like a valid AUREN backup.");
@@ -546,28 +610,46 @@ export default function Dashboard() {
     reader.readAsText(file);
   };
 
-  if (!displayName) {
+  const handleSignOut = async () => {
+    await signOut(auth);
+  };
+
+  if (authUser === undefined) {
+    return <div style={{ minHeight: "100vh", background: INK, display: "flex", alignItems: "center", justifyContent: "center" }}><Loader2 className="animate-spin" color={MUTED} size={22} /></div>;
+  }
+
+  if (authUser === null) {
     return (
       <div style={{ minHeight: "100vh", background: INK, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter" }}>
         <div style={{ width: 320, textAlign: "center" }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}><AurenMark size={64} /></div>
           <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6, letterSpacing: "0.08em" }}>AUREN</div>
           <div style={{ color: MUTED, fontSize: 13, marginBottom: 24 }}>Your life. In balance.</div>
-          <input
-            autoFocus value={nameInput} onChange={(e) => setNameInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && nameInput.trim()) { setSetting("displayName", nameInput.trim()); setDisplayName(nameInput.trim()); } }}
-            placeholder="Your name"
-            style={{ width: "100%", background: PANEL, border: `1px solid ${RULE}`, borderRadius: 10, padding: "12px 14px", color: PAPER, fontFamily: "IBM Plex Mono", fontSize: 14, outline: "none", marginBottom: 12, boxSizing: "border-box" }}
-          />
           <button
-            onClick={() => { if (nameInput.trim()) { setSetting("displayName", nameInput.trim()); setDisplayName(nameInput.trim()); } }}
-            style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer" }}
+            onClick={signIn}
+            style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
           >
-            Enter AUREN
+            Sign in with Google
           </button>
           <div style={{ color: MUTED, fontSize: 11, marginTop: 20, lineHeight: 1.5 }}>
-            Everything you enter stays on this device only — nothing is sent anywhere except the Assistant tab, if you add your own API key.
+            Signing in lets your data follow you across devices. Nothing is sent anywhere else except the Assistant tab, if you add your own API key.
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pendingMigration) {
+    return (
+      <div style={{ minHeight: "100vh", background: INK, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter" }}>
+        <div style={{ width: 340, textAlign: "center" }}>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}><AurenMark size={56} /></div>
+          <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 22, color: PAPER, marginBottom: 12 }}>Found data on this device</div>
+          <div style={{ color: MUTED, fontSize: 13, marginBottom: 24, lineHeight: 1.5 }}>
+            There's existing AUREN data saved locally here, from before you signed in. Import it into your account?
+          </div>
+          <button onClick={confirmMigration} style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Import my data</button>
+          <button onClick={skipMigration} style={{ width: "100%", background: "transparent", color: MUTED, border: `1px solid ${RULE}`, borderRadius: 10, padding: "10px", fontSize: 13, cursor: "pointer" }}>Start fresh instead</button>
         </div>
       </div>
     );
@@ -687,10 +769,10 @@ export default function Dashboard() {
               placeholder="sk-ant-…" style={{ ...inputStyle, marginBottom: 8 }}
             />
             <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5, marginBottom: 16 }}>
-              Stored only in this browser. Get one at console.anthropic.com — set a small spend cap there. Leave blank to skip the Assistant tab.
+              Synced to your account, so it follows you across devices. Get one at console.anthropic.com — set a small spend cap there. Leave blank to skip the Assistant tab.
             </div>
             <SectionLabel>Backup</SectionLabel>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
               <button onClick={downloadBackup} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "8px", cursor: "pointer", fontSize: 12 }}>
                 <Download size={13} /> Download backup
               </button>
@@ -699,6 +781,11 @@ export default function Dashboard() {
                 <input type="file" accept="application/json" onChange={uploadBackup} style={{ display: "none" }} />
               </label>
             </div>
+            <SectionLabel>Account</SectionLabel>
+            <div style={{ color: MUTED, fontSize: 12, marginBottom: 10 }}>{authUser?.email}</div>
+            <button onClick={handleSignOut} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: `1px solid ${RULE}`, color: RUST, borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontSize: 12 }}>
+              <LogOut size={13} /> Sign out
+            </button>
           </Card>
         )}
 
@@ -762,6 +849,7 @@ export default function Dashboard() {
             chat={chat} setChat={setChat}
             context={{ items, doneToday, workouts, meals, targets, reflections, spending, accounts, holdings, displayName, kitchen, dietTypes, allergies }}
             apiKey={apiKey} executeAction={executeAssistantAction}
+            speakEnabled={speakEnabled} setSpeakEnabled={setSpeakEnabled}
           />
         )}
         </div>
@@ -2322,12 +2410,11 @@ function ResearchSub({ research, setResearch }) {
   );
 }
 
-function AssistantTab({ chat, setChat, context, apiKey, executeAction }) {
+function AssistantTab({ chat, setChat, context, apiKey, executeAction, speakEnabled, setSpeakEnabled }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
-  const [speakEnabled, setSpeakEnabled] = useState(getSetting("speakReplies", "") === "true");
   const recognitionRef = useRef(null);
   const voiceSupported = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
   const ttsSupported = typeof window !== "undefined" && "speechSynthesis" in window;
@@ -2343,7 +2430,7 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction }) {
   const toggleSpeak = () => {
     const next = !speakEnabled;
     setSpeakEnabled(next);
-    setSetting("speakReplies", String(next));
+    db.setSettingField("speakReplies", next);
     if (!next) window.speechSynthesis?.cancel();
   };
 
