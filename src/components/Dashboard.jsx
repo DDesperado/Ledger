@@ -14,6 +14,7 @@ import * as gmail from "../lib/gmail";
 import { EXERCISES } from "../lib/exercises";
 import * as mealdb from "../lib/mealdb";
 import { fetchExerciseImage } from "../lib/exerciseImages";
+import { loadExerciseDb, exerciseNames, findExerciseImage } from "../lib/exerciseDb";
 import { INK, PANEL, PANEL2, CARD, CARD_ELEVATED, RULE, PAPER, MUTED, FAINT, BRASS, VERDI, RUST, SUCCESS, WARNING, INFO, CAT_NUTRITION as CAT_NUTRITION_COLOR, inputStyle, uid, todayStr, fmtDate, fetchQuote, colorFor, DIETARY_TYPES, COMMON_ALLERGENS, recipeMatchesDiet, recipeMatchesAllergies } from "../lib/theme";
 
 
@@ -99,7 +100,11 @@ function ExerciseThumb({ name, size = 32 }) {
   const [image, setImage] = useState(undefined); // undefined = loading, null = no match found
   useEffect(() => {
     let active = true;
-    fetchExerciseImage(name).then((img) => { if (active) setImage(img); });
+    loadExerciseDb().then((db) => {
+      const bigMatch = findExerciseImage(db, name);
+      if (bigMatch) { if (active) setImage(bigMatch); return; }
+      fetchExerciseImage(name).then((img) => { if (active) setImage(img); });
+    });
     return () => { active = false; };
   }, [name]);
 
@@ -1189,8 +1194,16 @@ function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, 
 function WorkoutTab({ workouts, setWorkouts }) {
   const [form, setForm] = useState({ exercise: "", sets: "", reps: "", weight: "" });
   const [chartExercise, setChartExercise] = useState("");
+  const [searchList, setSearchList] = useState(EXERCISES);
   const exercises = useMemo(() => [...new Set(workouts.map((w) => w.exercise))], [workouts]);
   useEffect(() => { if (!chartExercise && exercises.length) setChartExercise(exercises[0]); }, [exercises]);
+
+  useEffect(() => {
+    loadExerciseDb().then((db) => {
+      const names = exerciseNames(db);
+      if (names.length) setSearchList([...new Set([...EXERCISES, ...names])].sort());
+    });
+  }, []);
 
   const addWorkout = async () => {
     if (!form.exercise.trim() || !form.weight) return;
@@ -1207,7 +1220,7 @@ function WorkoutTab({ workouts, setWorkouts }) {
       <Card style={{ marginBottom: 16 }}>
         <SectionLabel>Log a lift</SectionLabel>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr auto", gap: 8 }}>
-          <SearchSelect value={form.exercise} onChange={(v) => setForm({ ...form, exercise: v })} options={EXERCISES} placeholder="Search exercise…" style={inputStyle} />
+          <SearchSelect value={form.exercise} onChange={(v) => setForm({ ...form, exercise: v })} options={searchList} placeholder="Search exercise…" style={inputStyle} />
           <input placeholder="Sets" type="number" value={form.sets} onChange={(e) => setForm({ ...form, sets: e.target.value })} style={inputStyle} />
           <input placeholder="Reps" type="number" value={form.reps} onChange={(e) => setForm({ ...form, reps: e.target.value })} style={inputStyle} />
           <input placeholder="Weight" type="number" value={form.weight} onChange={(e) => setForm({ ...form, weight: e.target.value })} style={inputStyle} />
