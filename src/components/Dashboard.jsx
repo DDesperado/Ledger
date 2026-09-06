@@ -318,6 +318,7 @@ export default function Dashboard() {
   const [holdings, setHoldings] = useState([]);
   const [research, setResearch] = useState([]);
   const [debts, setDebts] = useState([]);
+  const [pendingMeals, setPendingMeals] = useState([]);
   const [debtPayments, setDebtPayments] = useState([]);
   const [chat, setChat] = useState([]);
   const [kitchen, setKitchen] = useState([]);
@@ -371,6 +372,7 @@ export default function Dashboard() {
     setRecipes(rec);
     setReminders(await db.fetchTable("reminders"));
     setDebts(await db.fetchTable("debts"));
+    setPendingMeals(await db.fetchTable("pending_meals"));
     setDebtPayments(await db.fetchTable("debt_payments"));
 
     const settings = await db.fetchSettings();
@@ -451,9 +453,16 @@ export default function Dashboard() {
     }
     return count;
   }, [allCompletions, items.length]);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   const alerts = useMemo(() => {
     const list = [];
     const today = todayStr();
+    const now = Date.now();
     for (const item of lowStockItems) {
       list.push({ id: `stock-${item.id}`, kind: "stock", text: `${item.name} is running low (${item.qty}${item.unit} left)` });
     }
@@ -462,8 +471,12 @@ export default function Dashboard() {
       if (r.dueDate < today) list.push({ id: `rem-${r.id}`, kind: "overdue", text: `Overdue: ${r.title}` });
       else if (r.dueDate === today) list.push({ id: `rem-${r.id}`, kind: "today", text: `Due today: ${r.title}` });
     }
+    for (const m of pendingMeals) {
+      if (m.snoozedUntil && new Date(m.snoozedUntil).getTime() > now) continue;
+      list.push({ id: `meal-${m.id}`, kind: "meal", text: `Did you eat ${m.name}? Confirm in Nutrition.` });
+    }
     return list;
-  }, [lowStockItems, reminders]);
+  }, [lowStockItems, reminders, pendingMeals, tick]);
 
   const lastNotifiedCountRef = useRef(0);
   useEffect(() => {
@@ -531,6 +544,26 @@ export default function Dashboard() {
   const removeReminder = async (id) => {
     await db.deleteRow("reminders", id);
     setReminders(reminders.filter((r) => r.id !== id));
+  };
+
+  const confirmMealConsumed = async (meal) => {
+    const mealRow = await db.insertRow("nutrition_entries", {
+      date: todayStr(), name: meal.name, calories: meal.calories, protein: meal.protein, carbs: meal.carbs, fat: meal.fat,
+    });
+    setMeals((prev) => [mealRow, ...prev]);
+    await db.deleteRow("pending_meals", meal.id);
+    setPendingMeals((prev) => prev.filter((p) => p.id !== meal.id));
+  };
+
+  const snoozeMeal = async (meal, minutes = 30) => {
+    const snoozedUntil = new Date(Date.now() + minutes * 60000).toISOString();
+    const row = await db.updateRow("pending_meals", meal.id, { snoozedUntil });
+    setPendingMeals((prev) => prev.map((p) => (p.id === meal.id ? row : p)));
+  };
+
+  const discardMeal = async (meal) => {
+    await db.deleteRow("pending_meals", meal.id);
+    setPendingMeals((prev) => prev.filter((p) => p.id !== meal.id));
   };
 
   const finishOnboarding = () => {
@@ -851,6 +884,9 @@ export default function Dashboard() {
                 {t.id === "kitchen" && lowStockCount > 0 && (
                   <span style={{ background: RUST, color: PAPER, borderRadius: 10, fontSize: 10, padding: "1px 6px", fontFamily: "IBM Plex Mono" }}>{lowStockCount}</span>
                 )}
+                {t.id === "nutrition" && pendingMeals.length > 0 && (
+                  <span style={{ background: BRASS, color: INK, borderRadius: 10, fontSize: 10, padding: "1px 6px", fontFamily: "IBM Plex Mono" }}>{pendingMeals.length}</span>
+                )}
               </button>
             );
           })}
@@ -862,7 +898,12 @@ export default function Dashboard() {
           <TodayTab items={items} categories={categories} doneToday={doneToday} percent={percent} toggleItem={toggleItem} addItem={addItem} removeItem={removeItem} targets={targets} meals={meals} alerts={alerts} onOpenReminders={() => setShowReminders(true)} workouts={workouts} streak={streak} />
         )}
         {tab === "workout" && <WorkoutTab workouts={workouts} setWorkouts={setWorkouts} />}
-        {tab === "nutrition" && <NutritionTab targets={targets} setTargets={setTargets} meals={meals} setMeals={setMeals} />}
+        {tab === "nutrition" && (
+          <NutritionTab
+            targets={targets} setTargets={setTargets} meals={meals} setMeals={setMeals}
+            pendingMeals={pendingMeals} onConsumed={confirmMealConsumed} onSnooze={snoozeMeal} onDiscard={discardMeal}
+          />
+        )}
         {tab === "reflect" && <ReflectTab reflections={reflections} setReflections={setReflections} />}
         {tab === "finance" && (
           <FinanceTab spending={spending} setSpending={setSpending} accounts={accounts} setAccounts={setAccounts} holdings={holdings} setHoldings={setHoldings} research={research} setResearch={setResearch} kitchen={kitchen} setKitchen={setKitchen} debts={debts} setDebts={setDebts} debtPayments={debtPayments} setDebtPayments={setDebtPayments} />
@@ -876,6 +917,7 @@ export default function Dashboard() {
             spending={spending}
             dietTypes={dietTypes} allergies={allergies} onEditDiet={() => { setShowSettings(true); setShowDietSettings(true); }}
             apiKey={apiKey}
+            pendingMeals={pendingMeals} setPendingMeals={setPendingMeals}
           />
         )}
         {tab === "assistant" && (
@@ -944,6 +986,9 @@ export default function Dashboard() {
                     color: PAPER, padding: "14px 8px", cursor: "pointer", fontSize: 15, borderBottom: `1px solid ${RULE}`,
                   }}>
                     <Icon size={18} color={BRASS} /> {t.label}
+                    {t.id === "nutrition" && pendingMeals.length > 0 && (
+                      <span style={{ marginLeft: "auto", background: BRASS, color: INK, borderRadius: 10, fontSize: 11, padding: "1px 8px", fontFamily: "IBM Plex Mono" }}>{pendingMeals.length}</span>
+                    )}
                   </button>
                 );
               })}
@@ -1266,7 +1311,7 @@ function WorkoutTab({ workouts, setWorkouts }) {
   );
 }
 
-function NutritionTab({ targets, setTargets, meals, setMeals }) {
+function NutritionTab({ targets, setTargets, meals, setMeals, pendingMeals, onConsumed, onSnooze, onDiscard }) {
   const [form, setForm] = useState({ name: "", calories: "", protein: "", carbs: "", fat: "" });
   const [editTargets, setEditTargets] = useState(false);
   const [targetsForm, setTargetsForm] = useState(targets);
@@ -1293,6 +1338,25 @@ function NutritionTab({ targets, setTargets, meals, setMeals }) {
 
   return (
     <div>
+      {pendingMeals && pendingMeals.length > 0 && (
+        <Card style={{ marginBottom: 16, borderColor: BRASS }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <ChefHat size={14} color={BRASS} />
+            <SectionLabel>Did you eat this?</SectionLabel>
+          </div>
+          {pendingMeals.map((m) => (
+            <div key={m.id} style={{ background: PANEL2, borderRadius: 10, padding: 12, marginBottom: 8 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>{m.name}</div>
+              <div style={{ color: MUTED, fontSize: 11, marginBottom: 10 }}>Cooked {fmtDate(m.cookedAt.slice(0, 10))} · {m.calories} cal, {m.protein}g protein</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => onConsumed(m)} style={{ flex: 2, background: BRASS, border: "none", borderRadius: 8, padding: "8px", cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Consumed</button>
+                <button onClick={() => onSnooze(m, 30)} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: MUTED, borderRadius: 8, padding: "8px", cursor: "pointer", fontSize: 12 }}>Snooze 30m</button>
+                <button onClick={() => onDiscard(m)} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: RUST, borderRadius: 8, padding: "8px", cursor: "pointer", fontSize: 12 }}>Discard</button>
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <SectionLabel>Today's balance</SectionLabel>
@@ -1386,7 +1450,7 @@ function ReflectTab({ reflections, setReflections }) {
   );
 }
 
-function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList, recipes, setRecipes, meals, setMeals, spending, dietTypes, allergies, onEditDiet, apiKey }) {
+function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList, recipes, setRecipes, meals, setMeals, spending, dietTypes, allergies, onEditDiet, apiKey, pendingMeals, setPendingMeals }) {
   const [sub, setSub] = useState("inventory");
   const low = kitchen.filter((k) => k.qty <= k.threshold);
 
@@ -1427,13 +1491,13 @@ function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList, recipe
       )}
 
       {sub === "inventory" && <InventorySub kitchen={kitchen} setKitchen={setKitchen} shoppingList={shoppingList} setShoppingList={setShoppingList} low={low} />}
-      {sub === "recipes" && <RecipesSub recipes={recipes} setRecipes={setRecipes} kitchen={kitchen} setKitchen={setKitchen} meals={meals} setMeals={setMeals} dietTypes={dietTypes} allergies={allergies} apiKey={apiKey} />}
+      {sub === "recipes" && <RecipesSub recipes={recipes} setRecipes={setRecipes} kitchen={kitchen} setKitchen={setKitchen} meals={meals} setMeals={setMeals} dietTypes={dietTypes} allergies={allergies} apiKey={apiKey} pendingMeals={pendingMeals} setPendingMeals={setPendingMeals} />}
       {sub === "shopping" && <ShoppingListSub shoppingList={shoppingList} setShoppingList={setShoppingList} kitchen={kitchen} setKitchen={setKitchen} dietTypes={dietTypes} allergies={allergies} />}
     </div>
   );
 }
 
-function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals, dietTypes, allergies, apiKey }) {
+function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals, dietTypes, allergies, apiKey, pendingMeals, setPendingMeals }) {
   const [confirmingId, setConfirmingId] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showBrowse, setShowBrowse] = useState(false);
@@ -1562,10 +1626,11 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
     }
     setKitchen(updatedKitchen);
 
-    const mealRow = await db.insertRow("nutrition_entries", {
-      date: todayStr(), name: recipe.name, calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: recipe.fat,
+    const pendingRow = await db.insertRow("pending_meals", {
+      name: recipe.name, calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: recipe.fat,
+      cookedAt: new Date().toISOString(), snoozedUntil: null,
     });
-    setMeals([mealRow, ...meals]);
+    setPendingMeals([pendingRow, ...pendingMeals]);
     setConfirmingId(null);
   };
 
@@ -1702,7 +1767,7 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
 
           {confirmingId === recipe.id ? (
             <div style={{ background: PANEL2, borderRadius: 10, padding: 12 }}>
-              <div style={{ fontSize: 12, color: MUTED, marginBottom: 10 }}>This will deduct the available ingredients above from Kitchen and log this meal to Nutrition.</div>
+              <div style={{ fontSize: 12, color: MUTED, marginBottom: 10 }}>This deducts the available ingredients above from Kitchen. You'll confirm when you've actually eaten it to log it to Nutrition.</div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => cookRecipe(recipe)} style={{ flex: 1, background: BRASS, border: "none", borderRadius: 10, padding: "8px", cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Make it</button>
                 <button onClick={() => setConfirmingId(null)} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: MUTED, borderRadius: 10, padding: "8px", cursor: "pointer", fontSize: 12 }}>Cancel</button>
