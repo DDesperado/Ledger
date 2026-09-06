@@ -379,9 +379,12 @@ export default function Dashboard() {
     setLoading(false);
   };
 
+  const loadedForUidRef = useRef(null);
   useEffect(() => {
     if (authUser === undefined) return; // still checking auth state
-    if (authUser === null) { setLoading(false); return; } // signed out
+    if (authUser === null) { loadedForUidRef.current = null; setLoading(false); return; } // signed out
+    if (loadedForUidRef.current === authUser.uid) return; // already loaded this session — Firebase can re-fire auth events for the same user
+    loadedForUidRef.current = authUser.uid;
     (async () => {
       setCurrentUser(authUser.uid);
       const existing = await db.fetchChecklistItems();
@@ -488,6 +491,24 @@ export default function Dashboard() {
   const removeItem = async (id) => {
     await db.deleteRow("checklist_items", id);
     setItems(items.filter((i) => i.id !== id));
+  };
+
+  const [dedupeRunning, setDedupeRunning] = useState(false);
+  const dedupeHabits = async () => {
+    setDedupeRunning(true);
+    const seen = new Set();
+    const toKeep = [];
+    for (const item of items) {
+      const key = `${item.category}|${item.label}`;
+      if (seen.has(key)) {
+        await db.deleteRow("checklist_items", item.id);
+      } else {
+        seen.add(key);
+        toKeep.push(item);
+      }
+    }
+    setItems(toKeep);
+    setDedupeRunning(false);
   };
 
   const addReminder = async (title, dueDate) => {
@@ -781,6 +802,14 @@ export default function Dashboard() {
                 <input type="file" accept="application/json" onChange={uploadBackup} style={{ display: "none" }} />
               </label>
             </div>
+            {items.length > new Set(items.map((i) => `${i.category}|${i.label}`)).size && (
+              <div style={{ background: PANEL2, border: `1px solid ${WARNING}`, borderRadius: 10, padding: 12, marginBottom: 16 }}>
+                <div style={{ fontSize: 12, marginBottom: 8 }}>Some duplicate habits were found on Today's list.</div>
+                <button onClick={dedupeHabits} disabled={dedupeRunning} style={{ background: BRASS, border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+                  {dedupeRunning ? "Cleaning up…" : "Clean up duplicates"}
+                </button>
+              </div>
+            )}
             <SectionLabel>Account</SectionLabel>
             <div style={{ color: MUTED, fontSize: 12, marginBottom: 10 }}>{authUser?.email}</div>
             <button onClick={handleSignOut} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: `1px solid ${RULE}`, color: RUST, borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontSize: 12 }}>
