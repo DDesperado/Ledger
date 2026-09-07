@@ -16,6 +16,7 @@ import * as mealdb from "../lib/mealdb";
 import { fetchExerciseImage } from "../lib/exerciseImages";
 import { loadExerciseDb, exerciseNames, findExerciseImage } from "../lib/exerciseDb";
 import { fileToBase64, scanReceipt } from "../lib/receiptScan";
+import { scanReceiptLocal } from "../lib/receiptScanLocal";
 import { isLocalAISupported, chatLocal } from "../lib/localAI";
 import { INK, PANEL, PANEL2, CARD, CARD_ELEVATED, RULE, PAPER, MUTED, FAINT, BRASS, VERDI, RUST, SUCCESS, WARNING, INFO, CAT_NUTRITION as CAT_NUTRITION_COLOR, inputStyle, uid, todayStr, fmtDate, fetchQuote, colorFor, DIETARY_TYPES, COMMON_ALLERGENS, recipeMatchesDiet, recipeMatchesAllergies } from "../lib/theme";
 
@@ -2117,15 +2118,23 @@ function SpendingSub({ spending, setSpending, kitchen, setKitchen, debts, setDeb
   const [receiptReview, setReceiptReview] = useState(null); // {merchant, date, total, category, debtId, items:[{name,price,category,checked}]}
   const fileInputRef = useRef(null);
 
+  const [receiptProgress, setReceiptProgress] = useState(null);
+
   const handleReceiptFile = async (e) => {
     const file = e.target.files[0];
     e.target.value = "";
-    if (!file || !apiKey) return;
+    if (!file) return;
     setReceiptScanning(true);
     setReceiptError("");
+    setReceiptProgress(null);
     try {
-      const base64 = await fileToBase64(file);
-      const parsed = await scanReceipt(apiKey, base64, file.type || "image/jpeg");
+      let parsed;
+      if (apiKey) {
+        const base64 = await fileToBase64(file);
+        parsed = await scanReceipt(apiKey, base64, file.type || "image/jpeg");
+      } else {
+        parsed = await scanReceiptLocal(file, (pct, text) => setReceiptProgress({ pct, text }));
+      }
       setReceiptReview({
         merchant: parsed.merchant || "", date: parsed.date || todayStr(), total: parsed.total ?? "",
         category: "Groceries", debtId: "",
@@ -2134,6 +2143,7 @@ function SpendingSub({ spending, setSpending, kitchen, setKitchen, debts, setDeb
     } catch (e) {
       setReceiptError(e.message || "Couldn't read that receipt — try a clearer photo.");
     }
+    setReceiptProgress(null);
     setReceiptScanning(false);
   };
 
@@ -2209,13 +2219,25 @@ function SpendingSub({ spending, setSpending, kitchen, setKitchen, debts, setDeb
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
           <SectionLabel>Scan a receipt</SectionLabel>
-          <button onClick={() => fileInputRef.current?.click()} disabled={receiptScanning || !apiKey} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: apiKey ? PAPER : FAINT, borderRadius: 10, padding: "4px 12px", cursor: apiKey ? "pointer" : "not-allowed", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
+          <button onClick={() => fileInputRef.current?.click()} disabled={receiptScanning} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "4px 12px", cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
             {receiptScanning ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />} Scan photo
           </button>
           <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handleReceiptFile} style={{ display: "none" }} />
         </div>
-        {!apiKey && <div style={{ color: FAINT, fontSize: 11 }}>Add your Anthropic API key in Settings to use this — it reads the photo the same way the Assistant tab does.</div>}
-        {apiKey && !receiptError && <div style={{ color: FAINT, fontSize: 11 }}>Take or upload a photo — items go to Kitchen, the total logs to Finance, you confirm everything first.</div>}
+        {receiptProgress && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>{receiptProgress.text}</div>
+            <div style={{ height: 4, background: RULE, borderRadius: 3, overflow: "hidden" }}>
+              <div style={{ width: `${Math.round((receiptProgress.pct || 0) * 100)}%`, height: "100%", background: BRASS, transition: "width 0.2s ease" }} />
+            </div>
+          </div>
+        )}
+        {!receiptError && !receiptProgress && (
+          <div style={{ color: FAINT, fontSize: 11 }}>
+            Take or upload a photo — items go to Kitchen, the total logs to Finance, you confirm everything first.
+            {!apiKey && " Runs free on-device; for better accuracy on messy receipts, add an Anthropic key in Settings."}
+          </div>
+        )}
         {receiptError && <div style={{ color: RUST, fontSize: 11 }}>{receiptError}</div>}
       </Card>
 
@@ -2667,7 +2689,11 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction, speakEnab
   const send = async (overrideText) => {
     const text = (overrideText ?? input).trim();
     if (!text || loading) return;
-    if (usingLocal && !localSupported) return;
+    if (usingLocal && !localSupported) {
+      setChat((c) => [...c, { role: "user", content: text }, { role: "assistant", content: "This browser doesn't support the free on-device AI (it needs WebGPU). Add your own Anthropic API key in Settings to use the assistant here." }]);
+      setInput("");
+      return;
+    }
     const userMsg = { role: "user", content: text };
     setChat((c) => [...c, userMsg]);
     await db.insertRow("chat_messages", userMsg);
@@ -2741,7 +2767,16 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction, speakEnab
     rec.maxAlternatives = 1;
     rec.onstart = () => setListening(true);
     rec.onend = () => setListening(false);
-    rec.onerror = () => setListening(false);
+    rec.onerror = (e) => {
+      setListening(false);
+      const messages = {
+        "not-allowed": "Microphone permission was blocked — check your browser's site settings and allow microphone access for this page.",
+        "no-speech": "Didn't catch that — try again.",
+        "audio-capture": "No microphone found on this device.",
+        network: "Voice recognition needs an internet connection.",
+      };
+      setChat((c) => [...c, { role: "assistant", content: messages[e.error] || `Voice input error: ${e.error}` }]);
+    };
     rec.onresult = (e) => {
       const transcript = e.results[0][0].transcript;
       setInput(transcript);
@@ -2774,9 +2809,6 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction, speakEnab
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Sparkles size={15} color="#8B7FA6" />
           <div style={{ fontSize: 14, fontWeight: 600 }}>AUREN AI</div>
-          <span style={{ background: PANEL2, color: MUTED, borderRadius: 8, padding: "1px 7px", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            {usingLocal ? "On-device · free" : "Cloud"}
-          </span>
         </div>
         {ttsSupported && (
           <button onClick={toggleSpeak} title={speakEnabled ? "Replies spoken aloud" : "Enable spoken replies"} style={{ background: "transparent", border: "none", color: speakEnabled ? BRASS : MUTED, cursor: "pointer" }}>
