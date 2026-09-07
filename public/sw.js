@@ -1,6 +1,6 @@
-const CACHE = "auren-cache-v2";
+const CACHE = "auren-cache-v3";
 
-self.addEventListener("install", (event) => {
+self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
@@ -13,23 +13,23 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Cache-first for same-origin GET requests, so the app shell still opens offline.
+// Network-first for same-origin GET requests: always try to get the latest
+// deployed version first, and only fall back to the cached copy if the
+// network is unavailable (so the app still opens offline).
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
   event.respondWith(
-    caches.open(CACHE).then((cache) =>
-      cache.match(event.request).then((cached) => {
-        const fetchPromise = fetch(event.request)
-          .then((res) => {
-            if (res.ok) cache.put(event.request, res.clone());
-            return res;
-          })
-          .catch(() => cached);
-        return cached || fetchPromise;
+    fetch(event.request)
+      .then((res) => {
+        if (res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE).then((cache) => cache.put(event.request, clone));
+        }
+        return res;
       })
-    )
+      .catch(() => caches.open(CACHE).then((cache) => cache.match(event.request)))
   );
 });
