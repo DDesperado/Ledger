@@ -16,6 +16,7 @@ import * as mealdb from "../lib/mealdb";
 import { fetchExerciseImage } from "../lib/exerciseImages";
 import { loadExerciseDb, exerciseNames, findExerciseImage } from "../lib/exerciseDb";
 import { fileToBase64, scanReceipt } from "../lib/receiptScan";
+import { isLocalAISupported, chatLocal } from "../lib/localAI";
 import { INK, PANEL, PANEL2, CARD, CARD_ELEVATED, RULE, PAPER, MUTED, FAINT, BRASS, VERDI, RUST, SUCCESS, WARNING, INFO, CAT_NUTRITION as CAT_NUTRITION_COLOR, inputStyle, uid, todayStr, fmtDate, fetchQuote, colorFor, DIETARY_TYPES, COMMON_ALLERGENS, recipeMatchesDiet, recipeMatchesAllergies } from "../lib/theme";
 
 
@@ -823,13 +824,16 @@ export default function Dashboard() {
                 <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5 }}>Only fires while AUREN is open — this isn't a background push service, so it won't reach you if the tab is closed.</div>
               </div>
             )}
-            <SectionLabel>Anthropic API key (for the Assistant tab)</SectionLabel>
+            <SectionLabel>AI Assistant — Advanced (optional)</SectionLabel>
+            <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5, marginBottom: 10 }}>
+              The Assistant works free with no setup, running on-device in your browser. Add your own Anthropic API key here only if you want higher quality replies and the ability for the assistant to take actions (add to shopping list, log meals, etc).
+            </div>
             <input
               type="password" value={apiKey} onChange={(e) => saveApiKey(e.target.value)}
-              placeholder="sk-ant-…" style={{ ...inputStyle, marginBottom: 8 }}
+              placeholder="sk-ant-… (optional)" style={{ ...inputStyle, marginBottom: 8 }}
             />
-            <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5, marginBottom: 16 }}>
-              Synced to your account, so it follows you across devices. Get one at console.anthropic.com — set a small spend cap there. Leave blank to skip the Assistant tab.
+            <div style={{ color: FAINT, fontSize: 11, lineHeight: 1.5, marginBottom: 16 }}>
+              Synced to your account. Get one at console.anthropic.com — set a small spend cap there. Leave blank to keep using the free on-device version.
             </div>
             <SectionLabel>Backup</SectionLabel>
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
@@ -2638,9 +2642,12 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction, speakEnab
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
+  const [modelProgress, setModelProgress] = useState(null); // {pct, text} while downloading, null otherwise
   const recognitionRef = useRef(null);
   const voiceSupported = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
   const ttsSupported = typeof window !== "undefined" && "speechSynthesis" in window;
+  const localSupported = isLocalAISupported();
+  const usingLocal = !apiKey;
 
   const speak = (text) => {
     if (!speakEnabled || !ttsSupported) return;
@@ -2659,24 +2666,40 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction, speakEnab
 
   const send = async (overrideText) => {
     const text = (overrideText ?? input).trim();
-    if (!text || loading || !apiKey) return;
+    if (!text || loading) return;
+    if (usingLocal && !localSupported) return;
     const userMsg = { role: "user", content: text };
     setChat((c) => [...c, userMsg]);
     await db.insertRow("chat_messages", userMsg);
     setInput("");
     setLoading(true);
     try {
-      const result = await callAssistant([...chat, userMsg], context, apiKey);
-      if (result.type === "tool_use") {
-        setPendingAction({ ...result, description: describeAction(result.toolUse) });
-      } else {
-        const assistantMsg = { role: "assistant", content: result.text };
+      if (usingLocal) {
+        const system = buildAssistantSystemPrompt(context) + " You cannot take actions or modify data — only answer questions using the context given.";
+        const replyText = await chatLocal(
+          [...chat, userMsg].map((m) => ({ role: m.role, content: m.content })),
+          system,
+          (pct, text) => setModelProgress({ pct, text })
+        );
+        setModelProgress(null);
+        const assistantMsg = { role: "assistant", content: replyText };
         setChat((c) => [...c, assistantMsg]);
         await db.insertRow("chat_messages", assistantMsg);
-        speak(result.text);
+        speak(replyText);
+      } else {
+        const result = await callAssistant([...chat, userMsg], context, apiKey);
+        if (result.type === "tool_use") {
+          setPendingAction({ ...result, description: describeAction(result.toolUse) });
+        } else {
+          const assistantMsg = { role: "assistant", content: result.text };
+          setChat((c) => [...c, assistantMsg]);
+          await db.insertRow("chat_messages", assistantMsg);
+          speak(result.text);
+        }
       }
     } catch {
-      setChat((c) => [...c, { role: "assistant", content: "Couldn't reach the assistant — check your API key in settings and your spend cap." }]);
+      setModelProgress(null);
+      setChat((c) => [...c, { role: "assistant", content: usingLocal ? "The on-device model hit an error — try again, or add your own API key in Settings for the cloud version." : "Couldn't reach the assistant — check your API key in settings and your spend cap." }]);
     }
     setLoading(false);
   };
@@ -2728,16 +2751,18 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction, speakEnab
     rec.start();
   };
 
-  const suggestions = ["What should I eat?", "Add eggs to my shopping list", "How did I spend this month?", "Remind me to pay rent tomorrow", "What workout should I do?"];
+  const suggestions = usingLocal
+    ? ["What should I eat?", "What's low in my kitchen?", "How did I spend this month?", "What workout should I do?"]
+    : ["What should I eat?", "Add eggs to my shopping list", "How did I spend this month?", "Remind me to pay rent tomorrow", "What workout should I do?"];
 
-  if (!apiKey) {
+  if (usingLocal && !localSupported) {
     return (
       <Card style={{ textAlign: "center", padding: 40 }}>
         <Sparkles size={22} color="#8B7FA6" style={{ marginBottom: 12 }} />
         <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>AUREN AI</div>
         <div style={{ color: MUTED, fontSize: 13, lineHeight: 1.6 }}>
-          Add your Anthropic API key in <strong style={{ color: PAPER }}>settings</strong> (top right) to turn this on.
-          It's free to create a key at console.anthropic.com — just set a small spend cap once you're there.
+          Free on-device AI needs a browser with WebGPU (recent Chrome/Edge, or a newer Android phone) — this one doesn't support it.
+          You can still use the assistant by adding your own Anthropic API key in <strong style={{ color: PAPER }}>settings</strong>.
         </div>
       </Card>
     );
@@ -2749,6 +2774,9 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction, speakEnab
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Sparkles size={15} color="#8B7FA6" />
           <div style={{ fontSize: 14, fontWeight: 600 }}>AUREN AI</div>
+          <span style={{ background: PANEL2, color: MUTED, borderRadius: 8, padding: "1px 7px", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            {usingLocal ? "On-device · free" : "Cloud"}
+          </span>
         </div>
         {ttsSupported && (
           <button onClick={toggleSpeak} title={speakEnabled ? "Replies spoken aloud" : "Enable spoken replies"} style={{ background: "transparent", border: "none", color: speakEnabled ? BRASS : MUTED, cursor: "pointer" }}>
@@ -2756,6 +2784,14 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction, speakEnab
           </button>
         )}
       </div>
+      {modelProgress && (
+        <div style={{ padding: "10px 16px", borderBottom: `1px solid ${RULE}` }}>
+          <div style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>{modelProgress.text || "Loading on-device model — one-time download, cached after this…"}</div>
+          <div style={{ height: 4, background: RULE, borderRadius: 3, overflow: "hidden" }}>
+            <div style={{ width: `${Math.round((modelProgress.pct || 0) * 100)}%`, height: "100%", background: "#8B7FA6", transition: "width 0.2s ease" }} />
+          </div>
+        </div>
+      )}
       <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
         {chat.length === 0 && (
           <div style={{ marginTop: 20 }}>
