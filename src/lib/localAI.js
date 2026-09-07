@@ -8,7 +8,9 @@
 let engine = null;
 let loadingPromise = null;
 
-const MODEL_ID = "Llama-3.2-3B-Instruct-q4f16_1-MLC";
+// Smaller model = much faster generation on typical phones/laptops, which
+// matters more for "does this feel smooth" than a bit of extra quality.
+const MODEL_ID = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
 
 export function isLocalAISupported() {
   return typeof navigator !== "undefined" && !!navigator.gpu;
@@ -38,4 +40,26 @@ export async function chatLocal(messages, system, onProgress) {
     max_tokens: 400,
   });
   return reply.choices[0]?.message?.content || "…";
+}
+
+// Streams tokens as they're generated — onToken is called with the
+// accumulated text so far each time, for a live "typing" effect instead of
+// one frozen wait followed by the whole reply appearing at once.
+export async function chatLocalStream(messages, system, onToken, onProgress) {
+  const eng = await getEngine(onProgress);
+  const stream = await eng.chat.completions.create({
+    messages: [{ role: "system", content: system }, ...messages],
+    temperature: 0.7,
+    max_tokens: 400,
+    stream: true,
+  });
+  let full = "";
+  for await (const chunk of stream) {
+    const delta = chunk.choices?.[0]?.delta?.content || "";
+    if (delta) {
+      full += delta;
+      onToken(full);
+    }
+  }
+  return full || "…";
 }

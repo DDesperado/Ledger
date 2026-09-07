@@ -17,7 +17,7 @@ import { fetchExerciseImage } from "../lib/exerciseImages";
 import { loadExerciseDb, exerciseNames, findExerciseImage } from "../lib/exerciseDb";
 import { fileToBase64, scanReceipt } from "../lib/receiptScan";
 import { scanReceiptLocal } from "../lib/receiptScanLocal";
-import { isLocalAISupported, chatLocal } from "../lib/localAI";
+import { isLocalAISupported, chatLocal, chatLocalStream } from "../lib/localAI";
 import { INK, PANEL, PANEL2, CARD, CARD_ELEVATED, RULE, PAPER, MUTED, FAINT, BRASS, VERDI, RUST, SUCCESS, WARNING, INFO, CAT_NUTRITION as CAT_NUTRITION_COLOR, inputStyle, uid, todayStr, fmtDate, fetchQuote, colorFor, DIETARY_TYPES, COMMON_ALLERGENS, recipeMatchesDiet, recipeMatchesAllergies } from "../lib/theme";
 
 
@@ -2701,16 +2701,25 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction, speakEnab
     setLoading(true);
     try {
       if (usingLocal) {
-        const system = buildAssistantSystemPrompt(context) + " You cannot take actions or modify data — only answer questions using the context given.";
-        const replyText = await chatLocal(
+        const system = buildAssistantSystemPrompt(context) + " You cannot take actions or modify data — only answer questions using the context given. Keep replies brief.";
+        let placeholderAdded = false;
+        const replyText = await chatLocalStream(
           [...chat, userMsg].map((m) => ({ role: m.role, content: m.content })),
           system,
+          (accumulated) => {
+            setModelProgress(null);
+            if (!placeholderAdded) {
+              placeholderAdded = true;
+              setChat((c) => [...c, { role: "assistant", content: accumulated }]);
+            } else {
+              setChat((c) => c.map((m, i) => (i === c.length - 1 ? { ...m, content: accumulated } : m)));
+            }
+          },
           (pct, text) => setModelProgress({ pct, text })
         );
         setModelProgress(null);
-        const assistantMsg = { role: "assistant", content: replyText };
-        setChat((c) => [...c, assistantMsg]);
-        await db.insertRow("chat_messages", assistantMsg);
+        if (!placeholderAdded) setChat((c) => [...c, { role: "assistant", content: replyText }]);
+        await db.insertRow("chat_messages", { role: "assistant", content: replyText });
         speak(replyText);
       } else {
         const result = await callAssistant([...chat, userMsg], context, apiKey);
