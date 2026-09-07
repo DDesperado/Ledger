@@ -15,6 +15,7 @@ import { EXERCISES } from "../lib/exercises";
 import * as mealdb from "../lib/mealdb";
 import { fetchExerciseImage } from "../lib/exerciseImages";
 import { loadExerciseDb, exerciseNames, findExerciseImage } from "../lib/exerciseDb";
+import { fileToBase64, scanReceipt } from "../lib/receiptScan";
 import { INK, PANEL, PANEL2, CARD, CARD_ELEVATED, RULE, PAPER, MUTED, FAINT, BRASS, VERDI, RUST, SUCCESS, WARNING, INFO, CAT_NUTRITION as CAT_NUTRITION_COLOR, inputStyle, uid, todayStr, fmtDate, fetchQuote, colorFor, DIETARY_TYPES, COMMON_ALLERGENS, recipeMatchesDiet, recipeMatchesAllergies } from "../lib/theme";
 
 
@@ -906,7 +907,7 @@ export default function Dashboard() {
         )}
         {tab === "reflect" && <ReflectTab reflections={reflections} setReflections={setReflections} />}
         {tab === "finance" && (
-          <FinanceTab spending={spending} setSpending={setSpending} accounts={accounts} setAccounts={setAccounts} holdings={holdings} setHoldings={setHoldings} research={research} setResearch={setResearch} kitchen={kitchen} setKitchen={setKitchen} debts={debts} setDebts={setDebts} debtPayments={debtPayments} setDebtPayments={setDebtPayments} />
+          <FinanceTab spending={spending} setSpending={setSpending} accounts={accounts} setAccounts={setAccounts} holdings={holdings} setHoldings={setHoldings} research={research} setResearch={setResearch} kitchen={kitchen} setKitchen={setKitchen} debts={debts} setDebts={setDebts} debtPayments={debtPayments} setDebtPayments={setDebtPayments} apiKey={apiKey} />
         )}
         {tab === "kitchen" && (
           <KitchenTab
@@ -2075,7 +2076,7 @@ function ShoppingListSub({ shoppingList, setShoppingList, kitchen, setKitchen, d
   );
 }
 
-function FinanceTab({ spending, setSpending, accounts, setAccounts, holdings, setHoldings, research, setResearch, kitchen, setKitchen, debts, setDebts, debtPayments, setDebtPayments }) {
+function FinanceTab({ spending, setSpending, accounts, setAccounts, holdings, setHoldings, research, setResearch, kitchen, setKitchen, debts, setDebts, debtPayments, setDebtPayments, apiKey }) {
   const [sub, setSub] = useState("spending");
   const SUBS = [
     { id: "spending", label: "Spending", icon: ShoppingCart },
@@ -2093,7 +2094,7 @@ function FinanceTab({ spending, setSpending, accounts, setAccounts, holdings, se
           return <button key={s.id} onClick={() => setSub(s.id)} style={{ display: "flex", alignItems: "center", gap: 6, background: active ? PANEL2 : "transparent", border: `1px solid ${active ? BRASS : RULE}`, color: active ? PAPER : MUTED, borderRadius: 16, padding: "5px 12px", cursor: "pointer", fontSize: 12 }}><Icon size={12} /> {s.label}</button>;
         })}
       </div>
-      {sub === "spending" && <SpendingSub spending={spending} setSpending={setSpending} kitchen={kitchen} setKitchen={setKitchen} />}
+      {sub === "spending" && <SpendingSub spending={spending} setSpending={setSpending} kitchen={kitchen} setKitchen={setKitchen} debts={debts} setDebts={setDebts} apiKey={apiKey} />}
       {sub === "accounts" && <AccountsSub accounts={accounts} setAccounts={setAccounts} totalDebt={totalDebt} />}
       {sub === "debt" && <DebtSub debts={debts} setDebts={setDebts} debtPayments={debtPayments} setDebtPayments={setDebtPayments} />}
       {sub === "invest" && <InvestSub holdings={holdings} setHoldings={setHoldings} />}
@@ -2102,11 +2103,72 @@ function FinanceTab({ spending, setSpending, accounts, setAccounts, holdings, se
   );
 }
 
-function SpendingSub({ spending, setSpending, kitchen, setKitchen }) {
+function SpendingSub({ spending, setSpending, kitchen, setKitchen, debts, setDebts, apiKey }) {
   const [form, setForm] = useState({ merchant: "", category: SPENDING_CATEGORIES[0], amount: "" });
   const [candidates, setCandidates] = useState([]);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState("");
+  const [receiptScanning, setReceiptScanning] = useState(false);
+  const [receiptError, setReceiptError] = useState("");
+  const [receiptReview, setReceiptReview] = useState(null); // {merchant, date, total, category, debtId, items:[{name,price,category,checked}]}
+  const fileInputRef = useRef(null);
+
+  const handleReceiptFile = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file || !apiKey) return;
+    setReceiptScanning(true);
+    setReceiptError("");
+    try {
+      const base64 = await fileToBase64(file);
+      const parsed = await scanReceipt(apiKey, base64, file.type || "image/jpeg");
+      setReceiptReview({
+        merchant: parsed.merchant || "", date: parsed.date || todayStr(), total: parsed.total ?? "",
+        category: "Groceries", debtId: "",
+        items: (parsed.items || []).map((it) => ({ name: it.name, price: it.price, category: it.category || "Other", checked: true, qty: 1, unit: "" })),
+      });
+    } catch (e) {
+      setReceiptError(e.message || "Couldn't read that receipt — try a clearer photo.");
+    }
+    setReceiptScanning(false);
+  };
+
+  const toggleReceiptItem = (i) => {
+    setReceiptReview((r) => ({ ...r, items: r.items.map((it, idx) => (idx === i ? { ...it, checked: !it.checked } : it)) }));
+  };
+
+  const confirmReceipt = async () => {
+    const r = receiptReview;
+    const amount = Number(r.total) || 0;
+    const spendRow = await db.insertRow("spending", {
+      date: r.date || todayStr(), merchant: r.merchant || "Receipt", category: r.category, amount,
+      debtId: r.debtId || null,
+    });
+    setSpending((prev) => [spendRow, ...prev]);
+
+    if (r.debtId) {
+      const debt = debts.find((d) => d.id === r.debtId);
+      if (debt) {
+        const updated = await db.updateRow("debts", debt.id, { balance: debt.balance + amount });
+        setDebts((prev) => prev.map((d) => (d.id === debt.id ? updated : d)));
+      }
+    }
+
+    let nextKitchen = kitchen;
+    for (const item of r.items) {
+      if (!item.checked) continue;
+      const existing = nextKitchen.find((k) => k.name.toLowerCase() === item.name.toLowerCase());
+      if (existing) {
+        const updated = await db.updateRow("kitchen", existing.id, { qty: existing.qty + 1 });
+        nextKitchen = nextKitchen.map((k) => (k.id === existing.id ? updated : k));
+      } else {
+        const created = await db.insertRow("kitchen", { name: item.name, category: item.category, qty: 1, unit: "", threshold: 1, expiryDate: null });
+        nextKitchen = [...nextKitchen, created];
+      }
+    }
+    setKitchen(nextKitchen);
+    setReceiptReview(null);
+  };
 
   const addEntry = async () => {
     if (!form.merchant.trim() || !form.amount) return;
@@ -2140,6 +2202,60 @@ function SpendingSub({ spending, setSpending, kitchen, setKitchen }) {
 
   return (
     <div>
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <SectionLabel>Scan a receipt</SectionLabel>
+          <button onClick={() => fileInputRef.current?.click()} disabled={receiptScanning || !apiKey} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: apiKey ? PAPER : FAINT, borderRadius: 10, padding: "4px 12px", cursor: apiKey ? "pointer" : "not-allowed", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
+            {receiptScanning ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />} Scan photo
+          </button>
+          <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handleReceiptFile} style={{ display: "none" }} />
+        </div>
+        {!apiKey && <div style={{ color: FAINT, fontSize: 11 }}>Add your Anthropic API key in Settings to use this — it reads the photo the same way the Assistant tab does.</div>}
+        {apiKey && !receiptError && <div style={{ color: FAINT, fontSize: 11 }}>Take or upload a photo — items go to Kitchen, the total logs to Finance, you confirm everything first.</div>}
+        {receiptError && <div style={{ color: RUST, fontSize: 11 }}>{receiptError}</div>}
+      </Card>
+
+      {receiptReview && (
+        <div onClick={() => setReceiptReview(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 40, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: CARD, borderRadius: 14, padding: 20, maxWidth: 420, width: "100%", maxHeight: "85vh", overflowY: "auto" }}>
+            <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 12 }}>Review receipt</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+              <input placeholder="Merchant" value={receiptReview.merchant} onChange={(e) => setReceiptReview({ ...receiptReview, merchant: e.target.value })} style={inputStyle} />
+              <input type="date" value={receiptReview.date} onChange={(e) => setReceiptReview({ ...receiptReview, date: e.target.value })} style={inputStyle} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+              <input placeholder="Total $" type="number" value={receiptReview.total} onChange={(e) => setReceiptReview({ ...receiptReview, total: e.target.value })} style={inputStyle} />
+              <select value={receiptReview.category} onChange={(e) => setReceiptReview({ ...receiptReview, category: e.target.value })} style={inputStyle}>
+                {SPENDING_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <select value={receiptReview.debtId} onChange={(e) => setReceiptReview({ ...receiptReview, debtId: e.target.value })} style={{ ...inputStyle, marginBottom: 14 }}>
+              <option value="">Charged to — cash / no card</option>
+              {debts.map((d) => <option key={d.id} value={d.id}>Charge to {d.name}</option>)}
+            </select>
+
+            <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Items to add to Kitchen</div>
+            <div style={{ marginBottom: 16 }}>
+              {receiptReview.items.map((item, i) => (
+                <div key={i} onClick={() => toggleReceiptItem(i)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${RULE}`, cursor: "pointer" }}>
+                  <span style={{ width: 18, height: 18, borderRadius: 4, border: `1px solid ${item.checked ? BRASS : MUTED}`, background: item.checked ? BRASS : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    {item.checked && <Check size={12} color={INK} strokeWidth={3} />}
+                  </span>
+                  <span style={{ flex: 1, fontSize: 13, color: item.checked ? PAPER : MUTED }}>{item.name}</span>
+                  {item.price != null && <span style={{ fontSize: 11, color: MUTED, fontFamily: "IBM Plex Mono" }}>${Number(item.price).toFixed(2)}</span>}
+                </div>
+              ))}
+              {receiptReview.items.length === 0 && <div style={{ color: FAINT, fontSize: 12 }}>No individual items detected — just the total will be logged.</div>}
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={confirmReceipt} style={{ flex: 1, background: BRASS, border: "none", borderRadius: 10, padding: "10px", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Confirm</button>
+              <button onClick={() => setReceiptReview(null)} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: MUTED, borderRadius: 10, padding: "10px", cursor: "pointer", fontSize: 13 }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
           <SectionLabel>Scan Gmail for bills</SectionLabel>
