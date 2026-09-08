@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.0.0",
     "@mlc-ai/web-llm": "^0.2.79",
     "firebase": "^10.13.0",
     "lucide-react": "^0.383.0",

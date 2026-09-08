@@ -18,6 +18,7 @@ import { loadExerciseDb, exerciseNames, findExerciseImage } from "../lib/exercis
 import { fileToBase64, scanReceipt } from "../lib/receiptScan";
 import { scanReceiptLocal } from "../lib/receiptScanLocal";
 import { isLocalAISupported, chatLocal, chatLocalStream } from "../lib/localAI";
+import { isMicSupported, recordAndTranscribe } from "../lib/localSTT";
 import { INK, PANEL, PANEL2, CARD, CARD_ELEVATED, RULE, PAPER, MUTED, FAINT, BRASS, VERDI, RUST, SUCCESS, WARNING, INFO, CAT_NUTRITION as CAT_NUTRITION_COLOR, inputStyle, uid, todayStr, fmtDate, fetchQuote, colorFor, DIETARY_TYPES, COMMON_ALLERGENS, recipeMatchesDiet, recipeMatchesAllergies } from "../lib/theme";
 
 
@@ -901,7 +902,7 @@ export default function Dashboard() {
         <div className="ledger-page-content">
 
         {tab === "today" && (
-          <TodayTab items={items} categories={categories} doneToday={doneToday} percent={percent} toggleItem={toggleItem} addItem={addItem} removeItem={removeItem} targets={targets} meals={meals} alerts={alerts} onOpenReminders={() => setShowReminders(true)} workouts={workouts} streak={streak} />
+          <TodayTab items={items} categories={categories} doneToday={doneToday} percent={percent} toggleItem={toggleItem} addItem={addItem} removeItem={removeItem} targets={targets} meals={meals} alerts={alerts} onOpenReminders={() => setShowReminders(true)} workouts={workouts} streak={streak} allCompletions={allCompletions} />
         )}
         {tab === "workout" && <WorkoutTab workouts={workouts} setWorkouts={setWorkouts} />}
         {tab === "nutrition" && (
@@ -1151,9 +1152,61 @@ function Onboarding({ onFinish, setTargets, requestNotifications, dietTypes, tog
   );
 }
 
-function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, removeItem, targets, meals, alerts, onOpenReminders, workouts, streak }) {
+function MonthCalendar({ allCompletions, totalItems }) {
+  const [monthOffset, setMonthOffset] = useState(0);
+  const now = new Date();
+  const viewDate = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayOfWeek = new Date(year, month, 1).getDay();
+  const todayKey = todayStr();
+
+  const byDate = useMemo(() => {
+    const map = {};
+    allCompletions.forEach((c) => { (map[c.date] = map[c.date] || new Set()).add(c.item_id); });
+    return map;
+  }, [allCompletions]);
+
+  const days = Array.from({ length: daysInMonth }, (_, i) => {
+    const d = i + 1;
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const doneCount = byDate[dateStr]?.size || 0;
+    const pct = totalItems ? Math.min(1, doneCount / totalItems) : 0;
+    return { day: d, dateStr, pct, isToday: dateStr === todayKey };
+  });
+
+  const fullDays = days.filter((d) => d.pct >= 1 && !d.isToday).length;
+  const monthName = viewDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+  return (
+    <Card style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+        <button onClick={() => setMonthOffset((o) => o - 1)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", fontSize: 16, padding: "0 6px" }}>‹</button>
+        <SectionLabel>{monthName}</SectionLabel>
+        <button onClick={() => setMonthOffset((o) => Math.min(0, o + 1))} disabled={monthOffset >= 0} style={{ background: "transparent", border: "none", color: monthOffset >= 0 ? FAINT : MUTED, cursor: monthOffset >= 0 ? "default" : "pointer", fontSize: 16, padding: "0 6px" }}>›</button>
+      </div>
+      <div style={{ color: MUTED, fontSize: 11, marginBottom: 12 }}>{fullDays} day{fullDays !== 1 ? "s" : ""} fully completed this month</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+        {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => <div key={i} style={{ textAlign: "center", fontSize: 9, color: FAINT }}>{d}</div>)}
+        {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`e${i}`} />)}
+        {days.map((d) => (
+          <div key={d.day} title={`${Math.round(d.pct * 100)}%`} style={{
+            aspectRatio: "1", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
+            background: d.pct > 0 ? `rgba(201,164,100,${0.15 + d.pct * 0.7})` : RULE,
+            border: d.isToday ? `1px solid ${BRASS}` : "none",
+            fontSize: 10, color: d.pct >= 0.6 ? INK : MUTED,
+          }}>{d.day}</div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, removeItem, targets, meals, alerts, onOpenReminders, workouts, streak, allCompletions }) {
   const [newLabel, setNewLabel] = useState("");
   const [newCat, setNewCat] = useState(categories[0] || "General");
+  const [showCalendar, setShowCalendar] = useState(false);
 
   const todayProtein = meals.filter((m) => m.date === todayStr()).reduce((s, m) => s + m.protein, 0);
   const proteinPct = targets.protein ? Math.min(100, (todayProtein / targets.protein) * 100) : 0;
@@ -1181,7 +1234,12 @@ function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, 
             🔥 {streak} day{streak !== 1 ? "s" : ""} at 100%
           </div>
         )}
+        <button onClick={() => setShowCalendar((v) => !v)} style={{ marginTop: 12, paddingTop: streak > 0 ? 0 : 12, borderTop: streak > 0 ? "none" : `1px solid ${RULE}`, width: "100%", background: "transparent", border: "none", color: MUTED, fontSize: 11, cursor: "pointer", textAlign: "left" }}>
+          {showCalendar ? "Hide" : "Show"} this month ▾
+        </button>
       </Card>
+
+      {showCalendar && <MonthCalendar allCompletions={allCompletions} totalItems={items.length} />}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
         <Card style={{ padding: 16 }}>
@@ -1509,11 +1567,13 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
   const [showBrowse, setShowBrowse] = useState(false);
   const [cuisines, setCuisines] = useState([]);
   const [selectedCuisine, setSelectedCuisine] = useState("");
+  const [cuisineInput, setCuisineInput] = useState("");
   const [browseQuery, setBrowseQuery] = useState("");
   const [browseResults, setBrowseResults] = useState([]);
   const [browseLoading, setBrowseLoading] = useState(false);
   const [previewMeal, setPreviewMeal] = useState(null);
   const [estimatingId, setEstimatingId] = useState(null);
+  const [expandedInstructions, setExpandedInstructions] = useState({});
   const [form, setForm] = useState({ name: "", prepTime: "", calories: "", protein: "", carbs: "", fat: "", ingredients: [{ name: "", qty: "", unit: "" }], dietTags: [], allergens: [] });
 
   const estimateMacros = async (recipe) => {
@@ -1586,6 +1646,7 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
     const row = await db.insertRow("recipes", {
       name: previewMeal.strMeal, prepTime: 30, calories: 0, protein: 0, carbs: 0, fat: 0,
       ingredients, dietTags: [], allergens: [], source: "TheMealDB", image: previewMeal.strMealThumb || null,
+      instructions: previewMeal.strInstructions || "",
     });
     setRecipes([...recipes, row]);
     setPreviewMeal(null);
@@ -1682,10 +1743,15 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
               <input value={browseQuery} onChange={(e) => setBrowseQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runNameSearch()} placeholder="Search by dish name…" style={inputStyle} />
               <button onClick={runNameSearch} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, cursor: "pointer", fontSize: 12 }}>Search</button>
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
-              {cuisines.map((c) => (
-                <button key={c} onClick={() => runCuisineBrowse(c)} style={{ background: selectedCuisine === c ? BRASS : PANEL2, color: selectedCuisine === c ? INK : MUTED, border: `1px solid ${selectedCuisine === c ? BRASS : RULE}`, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>{c}</button>
-              ))}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ color: MUTED, fontSize: 11, marginBottom: 6 }}>Or browse by cuisine</div>
+              <SearchSelect
+                value={cuisineInput}
+                onChange={(v) => { setCuisineInput(v); if (cuisines.includes(v)) runCuisineBrowse(v); }}
+                options={cuisines}
+                placeholder="Type a cuisine — Indian, Thai, British…"
+                style={inputStyle}
+              />
             </div>
             {browseLoading && <Loader2 className="animate-spin" size={16} color={MUTED} />}
             {!browseLoading && browseResults.length > 0 && (
@@ -1707,13 +1773,20 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
 
       {previewMeal && (
         <div onClick={() => setPreviewMeal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 40, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: CARD, borderRadius: 14, padding: 20, maxWidth: 420, width: "100%", maxHeight: "80vh", overflowY: "auto" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: CARD, borderRadius: 14, padding: 20, maxWidth: 420, width: "100%", maxHeight: "85vh", overflowY: "auto" }}>
+            {previewMeal.strMealThumb && <img src={previewMeal.strMealThumb} alt="" style={{ width: "100%", height: 180, objectFit: "cover", borderRadius: 10, marginBottom: 14 }} />}
             <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>{previewMeal.strMeal}</div>
             <div style={{ color: MUTED, fontSize: 12, marginBottom: 12 }}>{previewMeal.strArea} · {previewMeal.strCategory}</div>
             <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>Ingredients</div>
             <div style={{ fontSize: 13, lineHeight: 1.8, marginBottom: 16 }}>
               {mealdb.parseIngredients(previewMeal).map((ing, i) => <div key={i}>{ing.qty}{ing.unit} {ing.name}</div>)}
             </div>
+            {previewMeal.strInstructions && (
+              <>
+                <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>Instructions</div>
+                <div style={{ fontSize: 13, lineHeight: 1.7, marginBottom: 16, whiteSpace: "pre-wrap" }}>{previewMeal.strInstructions}</div>
+              </>
+            )}
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={importMeal} style={{ flex: 1, background: BRASS, border: "none", borderRadius: 10, padding: "10px", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Add to my recipes</button>
               <button onClick={() => setPreviewMeal(null)} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: MUTED, borderRadius: 10, padding: "10px", cursor: "pointer", fontSize: 13 }}>Cancel</button>
@@ -1770,6 +1843,17 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
               </div>
             ))}
           </div>
+
+          {recipe.instructions && (
+            <div style={{ marginBottom: 12 }}>
+              <button onClick={() => setExpandedInstructions((e) => ({ ...e, [recipe.id]: !e[recipe.id] }))} style={{ background: "transparent", border: "none", color: BRASS, fontSize: 11, cursor: "pointer", padding: 0 }}>
+                {expandedInstructions[recipe.id] ? "Hide instructions ▴" : "How to make it ▾"}
+              </button>
+              {expandedInstructions[recipe.id] && (
+                <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.6, marginTop: 8, whiteSpace: "pre-wrap" }}>{recipe.instructions}</div>
+              )}
+            </div>
+          )}
 
           {confirmingId === recipe.id ? (
             <div style={{ background: PANEL2, borderRadius: 10, padding: 12 }}>
@@ -2665,8 +2749,7 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction, speakEnab
   const [listening, setListening] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
   const [modelProgress, setModelProgress] = useState(null); // {pct, text} while downloading, null otherwise
-  const recognitionRef = useRef(null);
-  const voiceSupported = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
+  const micSupported = isMicSupported();
   const ttsSupported = typeof window !== "undefined" && "speechSynthesis" in window;
   const localSupported = isLocalAISupported();
   const usingLocal = !apiKey;
@@ -2763,36 +2846,37 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction, speakEnab
     setChat((c) => [...c, { role: "assistant", content: "Okay, I won't do that." }]);
   };
 
-  const toggleListening = () => {
-    if (!voiceSupported) return;
+  const stopRecordingRef = useRef(null);
+  const [transcribeProgress, setTranscribeProgress] = useState(null);
+
+  const toggleListening = async () => {
+    if (!micSupported) return;
     if (listening) {
-      recognitionRef.current?.stop();
+      stopRecordingRef.current?.();
       return;
     }
-    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const rec = new Recognition();
-    rec.lang = "en-US";
-    rec.interimResults = false;
-    rec.maxAlternatives = 1;
-    rec.onstart = () => setListening(true);
-    rec.onend = () => setListening(false);
-    rec.onerror = (e) => {
+    setListening(true);
+    try {
+      const transcript = await recordAndTranscribe(
+        (pct) => setTranscribeProgress(pct),
+        (stopFn) => { stopRecordingRef.current = stopFn; }
+      );
       setListening(false);
-      const messages = {
-        "not-allowed": "Microphone permission was blocked — check your browser's site settings and allow microphone access for this page.",
-        "no-speech": "Didn't catch that — try again.",
-        "audio-capture": "No microphone found on this device.",
-        network: "Voice recognition needs an internet connection.",
-      };
-      setChat((c) => [...c, { role: "assistant", content: messages[e.error] || `Voice input error: ${e.error}` }]);
-    };
-    rec.onresult = (e) => {
-      const transcript = e.results[0][0].transcript;
-      setInput(transcript);
-      send(transcript);
-    };
-    recognitionRef.current = rec;
-    rec.start();
+      setTranscribeProgress(null);
+      if (transcript) {
+        setInput(transcript);
+        send(transcript);
+      }
+    } catch (e) {
+      setListening(false);
+      setTranscribeProgress(null);
+      const message = e.name === "NotAllowedError"
+        ? "Microphone permission was blocked — check your browser's site settings and allow microphone access for this page."
+        : e.name === "NotFoundError"
+        ? "No microphone found on this device."
+        : "Couldn't transcribe that — try again.";
+      setChat((c) => [...c, { role: "assistant", content: message }]);
+    }
   };
 
   const suggestions = usingLocal
@@ -2862,9 +2946,17 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction, speakEnab
         )}
         {loading && <Loader2 className="animate-spin" size={16} color={MUTED} />}
       </div>
+      {transcribeProgress !== null && (
+        <div style={{ padding: "6px 16px", borderTop: `1px solid ${RULE}` }}>
+          <div style={{ fontSize: 10, color: MUTED, marginBottom: 4 }}>Loading voice model…</div>
+          <div style={{ height: 3, background: RULE, borderRadius: 2, overflow: "hidden" }}>
+            <div style={{ width: `${Math.round(transcribeProgress * 100)}%`, height: "100%", background: BRASS, transition: "width 0.2s ease" }} />
+          </div>
+        </div>
+      )}
       <div style={{ display: "flex", gap: 8, padding: 12, borderTop: `1px solid ${RULE}` }}>
         <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder={listening ? "Listening…" : "Message AUREN…"} style={{ flex: 1, background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "10px 12px", fontSize: 13, outline: "none" }} />
-        {voiceSupported && (
+        {micSupported && (
           <button onClick={toggleListening} style={{ background: listening ? RUST : PANEL2, border: `1px solid ${RULE}`, borderRadius: 10, padding: "0 12px", cursor: "pointer", display: "flex", alignItems: "center" }}>
             <Mic size={15} color={listening ? PAPER : MUTED} />
           </button>
