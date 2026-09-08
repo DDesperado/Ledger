@@ -1,13 +1,18 @@
 {
+  "id": "/Ledger/",
   "name": "AUREN — Your life. In balance.",
   "short_name": "AUREN",
+  "description": "Your personal operating system for habits, kitchen, finance, and reflection.",
   "start_url": "/Ledger/",
   "scope": "/Ledger/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#0D1310",
   "theme_color": "#0D1310",
   "icons": [
-    { "src": "/Ledger/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/Ledger/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "/Ledger/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/Ledger/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/Ledger/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/Ledger/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
