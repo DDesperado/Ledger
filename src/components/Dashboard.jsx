@@ -9,7 +9,7 @@ import * as db from "../lib/cloudStore";
 import { setCurrentUser } from "../lib/cloudStore";
 import * as localDb from "../lib/store";
 import { auth, googleProvider } from "../lib/firebase";
-import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+import { onAuthStateChanged, signInWithRedirect, getRedirectResult, signOut } from "firebase/auth";
 import * as gmail from "../lib/gmail";
 import { EXERCISES } from "../lib/exercises";
 import * as mealdb from "../lib/mealdb";
@@ -341,9 +341,11 @@ export default function Dashboard() {
   const [gmailError, setGmailError] = useState("");
 
   const displayName = authUser?.displayName?.split(" ")[0] || "there";
+  const [signInError, setSignInError] = useState("");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => setAuthUser(user));
+    getRedirectResult(auth).catch((e) => setSignInError(e.message || "Sign-in failed — please try again."));
     return unsub;
   }, []);
 
@@ -427,7 +429,7 @@ export default function Dashboard() {
 
   const signIn = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      await signInWithRedirect(auth, googleProvider);
     } catch (e) {
       console.error("Sign-in failed", e);
     }
@@ -688,6 +690,7 @@ export default function Dashboard() {
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}><AurenMark size={64} /></div>
           <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6, letterSpacing: "0.08em" }}>AUREN</div>
           <div style={{ color: MUTED, fontSize: 13, marginBottom: 24 }}>Your life. In balance.</div>
+          {signInError && <div style={{ color: RUST, fontSize: 12, marginBottom: 16 }}>{signInError}</div>}
           <button
             onClick={signIn}
             style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
