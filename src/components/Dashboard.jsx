@@ -53,6 +53,96 @@ const DEFAULT_RECIPES = [
   },
 ];
 
+function SkeletonBlock({ height = 16, width = "100%", radius = 6, style }) {
+  return (
+    <div style={{
+      height, width, borderRadius: radius, flexShrink: 0,
+      background: `linear-gradient(90deg, ${CARD} 25%, ${CARD_ELEVATED} 50%, ${CARD} 75%)`,
+      backgroundSize: "200% 100%", animation: "ledgerShimmer 1.4s ease infinite",
+      ...style,
+    }} />
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div style={{ minHeight: "100vh", background: INK, padding: "36px 20px 40px" }}>
+      <style>{`@keyframes ledgerShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
+      <div style={{ maxWidth: 720, margin: "0 auto" }}>
+        <SkeletonBlock height={11} width={140} style={{ marginBottom: 12 }} />
+        <SkeletonBlock height={30} width={220} style={{ marginBottom: 28 }} />
+        <SkeletonBlock height={90} radius={14} style={{ marginBottom: 16 }} />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+          <SkeletonBlock height={70} radius={14} />
+          <SkeletonBlock height={70} radius={14} />
+        </div>
+        <SkeletonBlock height={140} radius={14} style={{ marginBottom: 16 }} />
+        <SkeletonBlock height={140} radius={14} />
+      </div>
+    </div>
+  );
+}
+
+function AnimatedNumber({ value, format = (v) => Math.round(v).toLocaleString(), style }) {
+  const [display, setDisplay] = useState(value);
+  const fromRef = useRef(value);
+  useEffect(() => {
+    const from = fromRef.current;
+    const to = value;
+    if (from === to) return;
+    const start = performance.now();
+    const duration = 400;
+    let raf;
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplay(from + (to - from) * eased);
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else fromRef.current = to;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return <span style={style}>{format(display)}</span>;
+}
+
+function Sidebar({ tab, setTab, allTabs, lowStockCount, mealCount, displayName, onSettings }) {
+  return (
+    <div className="ledger-sidebar" style={{
+      position: "fixed", top: 0, left: 0, bottom: 0, width: 240, background: PANEL,
+      borderRight: `1px solid ${RULE}`, padding: "24px 14px", flexDirection: "column",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 8px", marginBottom: 32 }}>
+        <AurenMark size={28} />
+        <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 16, letterSpacing: "0.06em" }}>AUREN</div>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
+        {allTabs.map((t) => {
+          const Icon = t.icon, active = tab === t.id;
+          const badge = t.id === "kitchen" ? lowStockCount : t.id === "nutrition" ? mealCount : 0;
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              display: "flex", alignItems: "center", gap: 12, background: active ? CARD_ELEVATED : "transparent",
+              border: "none", borderRadius: 10, padding: "10px 12px", cursor: "pointer", textAlign: "left",
+              color: active ? PAPER : MUTED, fontSize: 14, fontWeight: active ? 600 : 500,
+              transition: "background 0.15s ease, color 0.15s ease",
+            }}>
+              <Icon size={16} color={active ? BRASS : MUTED} />
+              <span style={{ flex: 1 }}>{t.label}</span>
+              {badge > 0 && (
+                <span style={{ background: t.id === "kitchen" ? RUST : BRASS, color: t.id === "kitchen" ? PAPER : INK, borderRadius: 8, fontSize: 10, padding: "1px 6px", fontFamily: "IBM Plex Mono" }}>{badge}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <button onClick={onSettings} style={{ display: "flex", alignItems: "center", gap: 10, background: "transparent", border: `1px solid ${RULE}`, borderRadius: 10, padding: "9px 12px", cursor: "pointer", color: MUTED, fontSize: 13 }}>
+        <Settings size={14} /> {displayName}
+      </button>
+    </div>
+  );
+}
+
 function AurenMark({ size = 56, color = BRASS }) {
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" fill="none">
@@ -73,11 +163,11 @@ function ProgressBar({ done, total, label, color = BRASS }) {
         <div style={{ fontSize: 15, fontWeight: 600 }}>
           <LedgerNum value={done} /> <span style={{ color: MUTED, fontWeight: 400 }}>/ {total} completed</span>
         </div>
-        <div style={{ fontSize: 15, fontWeight: 700, color }}>{pct}%</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color }}><AnimatedNumber value={pct} format={(v) => `${Math.round(v)}%`} /></div>
       </div>
       {label && <div style={{ color: MUTED, fontSize: 12, marginBottom: 8 }}>{label}</div>}
       <div style={{ height: 8, background: RULE, borderRadius: 5, overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 5, transition: "width 0.25s ease" }} />
+        <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 5, transition: "width 0.4s cubic-bezier(0.16, 1, 0.3, 1)" }} />
       </div>
     </div>
   );
@@ -722,7 +812,7 @@ export default function Dashboard() {
   }
 
   if (loading) {
-    return <div style={{ minHeight: "100vh", background: INK, display: "flex", alignItems: "center", justifyContent: "center" }}><Loader2 className="animate-spin" color={MUTED} size={22} /></div>;
+    return <DashboardSkeleton />;
   }
 
   const PRIMARY_TABS = [
@@ -741,7 +831,8 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight: "100vh", background: INK, fontFamily: "Inter", color: PAPER }}>
-      <div style={{ maxWidth: 720, margin: "0 auto", padding: "36px 20px 80px" }}>
+      <Sidebar tab={tab} setTab={setTab} allTabs={ALL_TABS} lowStockCount={lowStockCount} mealCount={pendingMeals.length} displayName={displayName} onSettings={() => setShowSettings(true)} />
+      <div className="ledger-shell" style={{ maxWidth: 720, margin: "0 auto", padding: "36px 20px 80px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28 }}>
           <div>
             <div style={{ fontFamily: "IBM Plex Mono", fontSize: 11, letterSpacing: "0.14em", color: BRASS, marginBottom: 8 }}>{dateLabel.toUpperCase()}</div>
@@ -874,10 +965,19 @@ export default function Dashboard() {
             .ledger-bottom-nav { display: flex; }
             .ledger-page-content { padding-bottom: 76px; }
           }
-          @keyframes ledgerFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-          .ledger-page-content > div { animation: ledgerFadeIn 0.2s ease; }
           button { transition: transform 0.1s ease, opacity 0.15s ease; }
           button:active { transform: scale(0.97); }
+          .ledger-sidebar { display: none; }
+          @media (min-width: 960px) {
+            .ledger-sidebar { display: flex; }
+            .ledger-shell { margin-left: 240px; padding-left: 40px !important; padding-right: 40px !important; }
+            .ledger-top-nav { display: none !important; }
+            .ledger-bottom-nav { display: none !important; }
+          }
+          @keyframes ledgerSlideIn { from { opacity: 0; transform: translateX(6px); } to { opacity: 1; transform: translateX(0); } }
+          .ledger-page-content > div { animation: ledgerSlideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
+          .ledger-bottom-nav button { position: relative; }
+          .ledger-nav-dot { transition: opacity 0.2s ease, transform 0.2s ease; }
         `}</style>
 
         <div className="ledger-top-nav" style={{ flexWrap: "wrap", gap: 4, borderBottom: `1px solid ${RULE}`, marginBottom: 24 }}>
@@ -967,8 +1067,9 @@ export default function Dashboard() {
                 border: "none", color: active ? BRASS : MUTED, cursor: "pointer", fontSize: 10, padding: "4px 8px",
                 position: "relative", transition: "color 0.15s ease",
               }}>
-                <Icon size={19} />
+                <Icon size={19} style={{ transition: "transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)", transform: active ? "scale(1.12)" : "scale(1)" }} />
                 {t.label}
+                <span className="ledger-nav-dot" style={{ width: 4, height: 4, borderRadius: "50%", background: BRASS, opacity: active ? 1 : 0, transform: active ? "scale(1)" : "scale(0)" }} />
                 {t.id === "kitchen" && lowStockCount > 0 && (
                   <span style={{ position: "absolute", top: 0, right: 2, background: RUST, width: 7, height: 7, borderRadius: "50%" }} />
                 )}
@@ -2455,7 +2556,9 @@ function AccountsSub({ accounts, setAccounts, totalDebt }) {
     <div>
       <Card style={{ marginBottom: 16 }}>
         <SectionLabel>Net worth</SectionLabel>
-        <div style={{ fontFamily: "Inter", fontSize: 30, fontWeight: 600 }}><LedgerNum value={`$${total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} positive={total >= 0} /></div>
+        <div style={{ fontFamily: "Inter", fontSize: 30, fontWeight: 600, color: total >= 0 ? VERDI : RUST, fontVariantNumeric: "tabular-nums" }}>
+          $<AnimatedNumber value={total} format={(v) => Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
+        </div>
         <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>
           ${assetsTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })} across {accounts.length} account{accounts.length !== 1 ? "s" : ""}
           {totalDebt > 0 && <> minus <span style={{ color: RUST }}>${totalDebt.toLocaleString(undefined, { minimumFractionDigits: 2 })} debt</span></>}
@@ -2556,7 +2659,7 @@ function DebtSub({ debts, setDebts, debtPayments, setDebtPayments }) {
     <div>
       <Card style={{ marginBottom: 16 }}>
         <SectionLabel>Total debt</SectionLabel>
-        <div style={{ fontFamily: "Inter", fontSize: 30, fontWeight: 600, color: totalDebt > 0 ? RUST : PAPER }}>${totalDebt.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+        <div style={{ fontFamily: "Inter", fontSize: 30, fontWeight: 600, color: totalDebt > 0 ? RUST : PAPER }}>$<AnimatedNumber value={totalDebt} format={(v) => v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /></div>
         {totalMinPayments > 0 && <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>${totalMinPayments.toFixed(2)} in minimum payments due monthly</div>}
       </Card>
 
