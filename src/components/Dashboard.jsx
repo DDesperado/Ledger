@@ -865,7 +865,9 @@ export default function Dashboard() {
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={toggleTheme} title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "6px 10px", display: "flex", alignItems: "center", color: MUTED, cursor: "pointer" }}>
-              {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+              <span key={theme} className="ledger-theme-icon" style={{ display: "flex" }}>
+                {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+              </span>
             </button>
             <button onClick={() => setShowReminders(true)} style={{ position: "relative", background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "6px 10px", display: "flex", alignItems: "center", color: MUTED, cursor: "pointer" }}>
               <Bell size={14} />
@@ -988,8 +990,13 @@ export default function Dashboard() {
             .ledger-bottom-nav { display: flex; }
             .ledger-page-content { padding-bottom: 76px; }
           }
-          button { transition: transform 0.1s ease, opacity 0.15s ease; }
+          button { transition: transform 0.1s ease, opacity 0.15s ease, background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease; }
           button:active { transform: scale(0.97); }
+          body, div, section, span, input, select, textarea {
+            transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease;
+          }
+          @keyframes ledgerThemeSpin { from { transform: rotate(-90deg) scale(0.5); opacity: 0; } to { transform: rotate(0) scale(1); opacity: 1; } }
+          .ledger-theme-icon { animation: ledgerThemeSpin 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
           .ledger-sidebar { display: none; }
           @media (min-width: 960px) {
             .ledger-sidebar { display: flex; }
