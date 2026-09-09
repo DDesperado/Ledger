@@ -1,27 +1,53 @@
-// Layered dark forest surfaces
-export const INK = "#0D1310";
-export const PANEL = "#141C17";
-export const CARD = "#1A2420";
-export const CARD_ELEVATED = "#212D26";
+// Core surface/text colors are CSS custom properties so the same exported
+// constants automatically reflect whichever theme (dark/light) is active —
+// no need to touch the hundreds of components that already use them.
+export const INK = "var(--ink)";
+export const PANEL = "var(--panel)";
+export const CARD = "var(--card)";
+export const CARD_ELEVATED = "var(--card-elevated)";
 export const PANEL2 = CARD; // legacy alias used across components
-export const RULE = "rgba(242,240,232,0.08)";
+export const RULE = "var(--rule)";
 
-// Typography
-export const PAPER = "#F2F0E8";
-export const MUTED = "#A9B0A5";
-export const FAINT = "#6B756D";
-export const DISABLED = "#4A524C";
+export const PAPER = "var(--paper)";
+export const MUTED = "var(--muted)";
+export const FAINT = "var(--faint)";
+export const DISABLED = "var(--disabled)";
+
+// Fixed dark color for text/icons sitting on brass-colored buttons/badges —
+// stays constant across light and dark themes, since gold surfaces always
+// need dark contrast regardless of the overall theme.
+export const ON_ACCENT = "#171207";
 
 // Brand accents
-export const BRASS = "#C9A464";
-export const VERDI = "#7BA88B";
-export const VERDI_DEEP = "#3F5C4C";
+export const BRASS = "var(--brass)";
+export const VERDI = "var(--verdi)";
+export const VERDI_DEEP = "var(--verdi-deep)";
 
 // Semantic
-export const SUCCESS = "#7BA88B";
-export const WARNING = "#D1A85A";
-export const RUST = "#C96B63"; // danger
-export const INFO = "#7197B8";
+export const SUCCESS = "var(--success)";
+export const WARNING = "var(--warning)";
+export const RUST = "var(--rust)"; // danger
+export const INFO = "var(--info)";
+
+// The actual hex values for both themes, applied as CSS custom properties.
+// (Category-identity colors and the hashed color-coding palette below are
+// intentionally left as fixed hex — they're used for things like category
+// dots and tags where consistent, theme-independent recognition matters
+// more than reflecting light/dark mode.)
+export const THEME_VARS = {
+  dark: {
+    "--ink": "#0D1310", "--panel": "#141C17", "--card": "#1A2420", "--card-elevated": "#212D26",
+    "--rule": "rgba(242,240,232,0.08)", "--paper": "#F2F0E8", "--muted": "#A9B0A5", "--faint": "#6B756D",
+    "--disabled": "#4A524C", "--brass": "#C9A464", "--verdi": "#7BA88B", "--verdi-deep": "#3F5C4C",
+    "--success": "#7BA88B", "--warning": "#D1A85A", "--rust": "#C96B63", "--info": "#7197B8",
+  },
+  light: {
+    "--ink": "#F5F3EE", "--panel": "#FFFFFF", "--card": "#FFFFFF", "--card-elevated": "#F1EEE6",
+    "--rule": "rgba(20,20,15,0.10)", "--paper": "#1C1D18", "--muted": "#66695F", "--faint": "#9B9C90",
+    "--disabled": "#C7C8BE", "--brass": "#A8823C", "--verdi": "#3F7A60", "--verdi-deep": "#2E5B48",
+    "--success": "#3F7A60", "--warning": "#B4832E", "--rust": "#B04E42", "--info": "#4A749A",
+  },
+};
 
 // Per-module identity colors
 export const CAT_TODAY = "#C9A464";
@@ -68,8 +94,6 @@ export async function fetchQuote(ticker) {
 export const DIETARY_TYPES = ["Vegetarian", "Vegan", "Pescatarian", "Omnivore", "Halal", "Kosher", "Gluten-free", "Dairy-free", "Lactose-free", "Keto", "Low-carb", "High-protein"];
 export const COMMON_ALLERGENS = ["Peanuts", "Tree nuts", "Milk", "Eggs", "Soy", "Wheat", "Fish", "Shellfish", "Sesame"];
 
-// Hard-exclusion rule: if the user holds `dietType`, a recipe tagged with any of
-// these ingredient-tags is not compatible and should be hard-filtered out.
 const DIET_EXCLUDES = {
   Vegetarian: ["meat", "fish", "shellfish"],
   Vegan: ["meat", "fish", "shellfish", "dairy", "eggs"],

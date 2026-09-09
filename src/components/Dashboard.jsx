@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import {
   Check, Plus, Trash2, Send, Dumbbell, UtensilsCrossed, NotebookPen,
   Sparkles, ListChecks, Loader2, Wallet, ShoppingCart, Landmark, TrendingUp, BookOpen, RefreshCw, Settings, Download, Upload,
-  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2, X, Bell, Mic, Volume2, VolumeX, CreditCard, Search, LogOut,
+  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2, X, Bell, Mic, Volume2, VolumeX, CreditCard, Search, LogOut, Sun, Moon,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import * as db from "../lib/cloudStore";
@@ -19,7 +19,7 @@ import { fileToBase64, scanReceipt } from "../lib/receiptScan";
 import { scanReceiptLocal } from "../lib/receiptScanLocal";
 import { isLocalAISupported, chatLocal, chatLocalStream } from "../lib/localAI";
 import { isMicSupported, recordAndTranscribe } from "../lib/localSTT";
-import { INK, PANEL, PANEL2, CARD, CARD_ELEVATED, RULE, PAPER, MUTED, FAINT, BRASS, VERDI, RUST, SUCCESS, WARNING, INFO, CAT_NUTRITION as CAT_NUTRITION_COLOR, inputStyle, uid, todayStr, fmtDate, fetchQuote, colorFor, DIETARY_TYPES, COMMON_ALLERGENS, recipeMatchesDiet, recipeMatchesAllergies } from "../lib/theme";
+import { INK, PANEL, PANEL2, CARD, CARD_ELEVATED, RULE, PAPER, MUTED, FAINT, BRASS, VERDI, RUST, SUCCESS, WARNING, INFO, ON_ACCENT, CAT_NUTRITION as CAT_NUTRITION_COLOR, inputStyle, uid, todayStr, fmtDate, fetchQuote, colorFor, DIETARY_TYPES, COMMON_ALLERGENS, recipeMatchesDiet, recipeMatchesAllergies } from "../lib/theme";
 
 
 const DEFAULT_ITEMS = [
@@ -398,6 +398,9 @@ export default function Dashboard() {
   const [showSettings, setShowSettings] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [speakEnabled, setSpeakEnabled] = useState(false);
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem("auren-theme") || "dark"; } catch { return "dark"; }
+  });
   const [pendingMigration, setPendingMigration] = useState(null);
 
   const [items, setItems] = useState([]);
@@ -477,6 +480,7 @@ export default function Dashboard() {
     setDietTypes(settings.dietTypes || []);
     setAllergies(settings.allergies || []);
     setSpeakEnabled(!!settings.speakReplies);
+    if (settings.theme) applyTheme(settings.theme);
     if (!settings.onboarded) setShowOnboarding(true);
 
     setLoading(false);
@@ -662,6 +666,22 @@ export default function Dashboard() {
     setPendingMeals((prev) => prev.filter((p) => p.id !== meal.id));
   };
 
+  const applyTheme = (mode) => {
+    setTheme(mode);
+    document.documentElement.setAttribute("data-theme", mode);
+    try { localStorage.setItem("auren-theme", mode); } catch {}
+  };
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    applyTheme(next);
+    db.setSettingField("theme", next);
+  };
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, []);
+
   const finishOnboarding = () => {
     db.setSettingField("onboarded", true);
     setShowOnboarding(false);
@@ -783,7 +803,7 @@ export default function Dashboard() {
           {signInError && <div style={{ color: RUST, fontSize: 12, marginBottom: 16 }}>{signInError}</div>}
           <button
             onClick={signIn}
-            style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+            style={{ width: "100%", background: BRASS, color: ON_ACCENT, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
           >
             Sign in with Google
           </button>
@@ -804,7 +824,7 @@ export default function Dashboard() {
           <div style={{ color: MUTED, fontSize: 13, marginBottom: 24, lineHeight: 1.5 }}>
             There's existing AUREN data saved locally here, from before you signed in. Import it into your account?
           </div>
-          <button onClick={confirmMigration} style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Import my data</button>
+          <button onClick={confirmMigration} style={{ width: "100%", background: BRASS, color: ON_ACCENT, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Import my data</button>
           <button onClick={skipMigration} style={{ width: "100%", background: "transparent", color: MUTED, border: `1px solid ${RULE}`, borderRadius: 10, padding: "10px", fontSize: 13, cursor: "pointer" }}>Start fresh instead</button>
         </div>
       </div>
@@ -844,6 +864,9 @@ export default function Dashboard() {
             )}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={toggleTheme} title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "6px 10px", display: "flex", alignItems: "center", color: MUTED, cursor: "pointer" }}>
+              {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+            </button>
             <button onClick={() => setShowReminders(true)} style={{ position: "relative", background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "6px 10px", display: "flex", alignItems: "center", color: MUTED, cursor: "pointer" }}>
               <Bell size={14} />
               {alerts.length > 0 && (
@@ -995,7 +1018,7 @@ export default function Dashboard() {
                   <span style={{ background: RUST, color: PAPER, borderRadius: 10, fontSize: 10, padding: "1px 6px", fontFamily: "IBM Plex Mono" }}>{lowStockCount}</span>
                 )}
                 {t.id === "nutrition" && pendingMeals.length > 0 && (
-                  <span style={{ background: BRASS, color: INK, borderRadius: 10, fontSize: 10, padding: "1px 6px", fontFamily: "IBM Plex Mono" }}>{pendingMeals.length}</span>
+                  <span style={{ background: BRASS, color: ON_ACCENT, borderRadius: 10, fontSize: 10, padding: "1px 6px", fontFamily: "IBM Plex Mono" }}>{pendingMeals.length}</span>
                 )}
               </button>
             );
@@ -1098,7 +1121,7 @@ export default function Dashboard() {
                   }}>
                     <Icon size={18} color={BRASS} /> {t.label}
                     {t.id === "nutrition" && pendingMeals.length > 0 && (
-                      <span style={{ marginLeft: "auto", background: BRASS, color: INK, borderRadius: 10, fontSize: 11, padding: "1px 8px", fontFamily: "IBM Plex Mono" }}>{pendingMeals.length}</span>
+                      <span style={{ marginLeft: "auto", background: BRASS, color: ON_ACCENT, borderRadius: 10, fontSize: 11, padding: "1px 8px", fontFamily: "IBM Plex Mono" }}>{pendingMeals.length}</span>
                     )}
                   </button>
                 );
@@ -1158,12 +1181,12 @@ function RemindersPanel({ alerts, reminders, onClose, addReminder, toggleReminde
         <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr auto", gap: 8, marginBottom: 16 }}>
           <input placeholder="Remind me to…" value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} />
           <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={inputStyle} />
-          <button onClick={() => { addReminder(title, dueDate); setTitle(""); }} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <button onClick={() => { addReminder(title, dueDate); setTitle(""); }} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={ON_ACCENT} /></button>
         </div>
         {reminders.map((r) => (
           <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${RULE}` }}>
             <button onClick={() => toggleReminder(r.id)} style={{ width: 20, height: 20, borderRadius: 10, border: `1px solid ${r.done ? BRASS : MUTED}`, background: r.done ? BRASS : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
-              {r.done && <Check size={13} color={INK} strokeWidth={3} />}
+              {r.done && <Check size={13} color={ON_ACCENT} strokeWidth={3} />}
             </button>
             <span style={{ flex: 1, fontSize: 13, textDecoration: r.done ? "line-through" : "none", color: r.done ? MUTED : PAPER }}>{r.title}</span>
             <span style={{ fontSize: 11, color: MUTED, fontFamily: "IBM Plex Mono" }}>{fmtDate(r.dueDate)}</span>
@@ -1204,13 +1227,13 @@ function Onboarding({ onFinish, setTargets, requestNotifications, dietTypes, tog
                   border: `1px solid ${focus[k] ? BRASS : RULE}`, borderRadius: 6, padding: "10px 14px", cursor: "pointer", color: PAPER, fontSize: 14,
                 }}>
                   <span style={{ width: 16, height: 16, borderRadius: 10, border: `1px solid ${focus[k] ? BRASS : MUTED}`, background: focus[k] ? BRASS : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    {focus[k] && <Check size={11} color={INK} strokeWidth={3} />}
+                    {focus[k] && <Check size={11} color={ON_ACCENT} strokeWidth={3} />}
                   </span>
                   {k}
                 </button>
               ))}
             </div>
-            <button onClick={() => setStep(1)} style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Continue</button>
+            <button onClick={() => setStep(1)} style={{ width: "100%", background: BRASS, color: ON_ACCENT, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Continue</button>
             <button onClick={onFinish} style={{ width: "100%", background: "transparent", color: MUTED, border: "none", padding: "8px", fontSize: 13, cursor: "pointer" }}>Skip for now</button>
           </>
         )}
@@ -1229,7 +1252,7 @@ function Onboarding({ onFinish, setTargets, requestNotifications, dietTypes, tog
                 <button key={a} onClick={() => toggleAllergy(a)} style={{ background: allergies.includes(a) ? RUST : "transparent", color: allergies.includes(a) ? PAPER : MUTED, border: `1px solid ${allergies.includes(a) ? RUST : RULE}`, borderRadius: 12, padding: "5px 11px", fontSize: 12, cursor: "pointer" }}>{a}</button>
               ))}
             </div>
-            <button onClick={() => setStep(2)} style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Continue</button>
+            <button onClick={() => setStep(2)} style={{ width: "100%", background: BRASS, color: ON_ACCENT, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Continue</button>
             <button onClick={onFinish} style={{ width: "100%", background: "transparent", color: MUTED, border: "none", padding: "8px", fontSize: 13, cursor: "pointer" }}>Skip for now</button>
           </>
         )}
@@ -1237,7 +1260,7 @@ function Onboarding({ onFinish, setTargets, requestNotifications, dietTypes, tog
           <>
             <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 24, color: PAPER, marginBottom: 20 }}>Daily protein target</div>
             <input type="number" value={proteinGoal} onChange={(e) => setProteinGoal(e.target.value)} style={{ width: "100%", background: PANEL, border: `1px solid ${RULE}`, borderRadius: 10, padding: "12px 14px", color: PAPER, fontFamily: "IBM Plex Mono", fontSize: 14, outline: "none", marginBottom: 24, boxSizing: "border-box", textAlign: "center" }} />
-            <button onClick={() => setStep(3)} style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Continue</button>
+            <button onClick={() => setStep(3)} style={{ width: "100%", background: BRASS, color: ON_ACCENT, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Continue</button>
             <button onClick={onFinish} style={{ width: "100%", background: "transparent", color: MUTED, border: "none", padding: "8px", fontSize: 13, cursor: "pointer" }}>Skip for now</button>
           </>
         )}
@@ -1247,7 +1270,7 @@ function Onboarding({ onFinish, setTargets, requestNotifications, dietTypes, tog
             <div style={{ color: MUTED, fontSize: 13, marginBottom: 24, lineHeight: 1.5 }}>
               Get alerted when you're low on groceries or a reminder's due — only while AUREN is open.
             </div>
-            <button onClick={async () => { await requestNotifications(); finishSetup(); }} style={{ width: "100%", background: BRASS, color: INK, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Enable notifications</button>
+            <button onClick={async () => { await requestNotifications(); finishSetup(); }} style={{ width: "100%", background: BRASS, color: ON_ACCENT, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Enable notifications</button>
             <button onClick={finishSetup} style={{ width: "100%", background: "transparent", color: MUTED, border: "none", padding: "8px", fontSize: 13, cursor: "pointer" }}>Skip for now</button>
           </>
         )}
@@ -1381,7 +1404,7 @@ function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, 
             return (
               <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${RULE}` }}>
                 <button onClick={() => toggleItem(item.id)} style={{ width: 20, height: 20, borderRadius: 10, border: `1px solid ${done ? BRASS : MUTED}`, background: done ? BRASS : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, transition: "all 0.15s ease" }}>
-                  {done && <Check size={13} color={INK} strokeWidth={3} />}
+                  {done && <Check size={13} color={ON_ACCENT} strokeWidth={3} />}
                 </button>
                 <span style={{ flex: 1, fontSize: 14, textDecoration: done ? "line-through" : "none", color: done ? MUTED : PAPER }}>{item.label}</span>
                 <button onClick={() => removeItem(item.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={13} /></button>
@@ -1397,7 +1420,7 @@ function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, 
             {[...categories, "General"].filter((v, i, a) => a.indexOf(v) === i).map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { addItem(newCat, newLabel); setNewLabel(""); } }} placeholder="e.g. Stretch for 10 minutes" style={{ flex: 1, background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "8px 10px", fontSize: 13, outline: "none" }} />
-          <button onClick={() => { addItem(newCat, newLabel); setNewLabel(""); }} style={{ background: BRASS, border: "none", borderRadius: 10, padding: "0 12px", cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <button onClick={() => { addItem(newCat, newLabel); setNewLabel(""); }} style={{ background: BRASS, border: "none", borderRadius: 10, padding: "0 12px", cursor: "pointer" }}><Plus size={16} color={ON_ACCENT} /></button>
         </div>
       </Card>
     </div>
@@ -1437,7 +1460,7 @@ function WorkoutTab({ workouts, setWorkouts }) {
           <input placeholder="Sets" type="number" value={form.sets} onChange={(e) => setForm({ ...form, sets: e.target.value })} style={inputStyle} />
           <input placeholder="Reps" type="number" value={form.reps} onChange={(e) => setForm({ ...form, reps: e.target.value })} style={inputStyle} />
           <input placeholder="Weight" type="number" value={form.weight} onChange={(e) => setForm({ ...form, weight: e.target.value })} style={inputStyle} />
-          <button onClick={addWorkout} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <button onClick={addWorkout} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={ON_ACCENT} /></button>
         </div>
       </Card>
       {exercises.length > 0 && (
@@ -1561,7 +1584,7 @@ function NutritionTab({ targets, setTargets, meals, setMeals, pendingMeals, onCo
           <input placeholder="Protein" type="number" value={form.protein} onChange={(e) => setForm({ ...form, protein: e.target.value })} style={inputStyle} />
           <input placeholder="Carbs" type="number" value={form.carbs} onChange={(e) => setForm({ ...form, carbs: e.target.value })} style={inputStyle} />
           <input placeholder="Fat" type="number" value={form.fat} onChange={(e) => setForm({ ...form, fat: e.target.value })} style={inputStyle} />
-          <button onClick={addEntry} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <button onClick={addEntry} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={ON_ACCENT} /></button>
         </div>
       </Card>
       <Card>
@@ -2119,7 +2142,7 @@ function InventorySub({ kitchen, setKitchen, shoppingList, setShoppingList, low 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8 }}>
           <input placeholder="Low at" type="number" value={form.threshold} onChange={(e) => setForm({ ...form, threshold: e.target.value })} style={inputStyle} />
           <input type="date" value={form.expiryDate} onChange={(e) => setForm({ ...form, expiryDate: e.target.value })} style={inputStyle} title="Expiry date (optional)" />
-          <button onClick={addItem} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer", padding: "0 16px" }}><Plus size={16} color={INK} /></button>
+          <button onClick={addItem} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer", padding: "0 16px" }}><Plus size={16} color={ON_ACCENT} /></button>
         </div>
       </Card>
 
@@ -2221,7 +2244,7 @@ function ShoppingListSub({ shoppingList, setShoppingList, kitchen, setKitchen, d
           <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={inputStyle}>
             {KITCHEN_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <button onClick={() => addItem()} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <button onClick={() => addItem()} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={ON_ACCENT} /></button>
         </div>
         {conflictWarning && (
           <div style={{ marginTop: 10, background: PANEL2, border: `1px solid ${WARNING}`, borderRadius: 10, padding: 12 }}>
@@ -2258,7 +2281,7 @@ function ShoppingListSub({ shoppingList, setShoppingList, kitchen, setKitchen, d
           {purchasedRecently.map((item) => (
             <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", fontSize: 12, color: MUTED, textDecoration: "line-through" }}>
               <button onClick={() => togglePurchased(item)} style={{ width: 16, height: 16, borderRadius: 10, border: `1px solid ${BRASS}`, background: BRASS, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
-                <Check size={11} color={INK} strokeWidth={3} />
+                <Check size={11} color={ON_ACCENT} strokeWidth={3} />
               </button>
               <span style={{ flex: 1 }}>{item.name}</span>
             </div>
@@ -2453,7 +2476,7 @@ function SpendingSub({ spending, setSpending, kitchen, setKitchen, debts, setDeb
               {receiptReview.items.map((item, i) => (
                 <div key={i} onClick={() => toggleReceiptItem(i)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${RULE}`, cursor: "pointer" }}>
                   <span style={{ width: 18, height: 18, borderRadius: 4, border: `1px solid ${item.checked ? BRASS : MUTED}`, background: item.checked ? BRASS : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    {item.checked && <Check size={12} color={INK} strokeWidth={3} />}
+                    {item.checked && <Check size={12} color={ON_ACCENT} strokeWidth={3} />}
                   </span>
                   <span style={{ flex: 1, fontSize: 13, color: item.checked ? PAPER : MUTED }}>{item.name}</span>
                   {item.price != null && <span style={{ fontSize: 11, color: MUTED, fontFamily: "IBM Plex Mono" }}>${Number(item.price).toFixed(2)}</span>}
@@ -2496,7 +2519,7 @@ function SpendingSub({ spending, setSpending, kitchen, setKitchen, debts, setDeb
           <input placeholder="Merchant / item" value={form.merchant} onChange={(e) => setForm({ ...form, merchant: e.target.value })} style={inputStyle} />
           <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={inputStyle}>{SPENDING_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
           <input placeholder="$ amount" type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} style={inputStyle} />
-          <button onClick={addEntry} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <button onClick={addEntry} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={ON_ACCENT} /></button>
         </div>
       </Card>
       <Card style={{ marginBottom: 16 }}>
@@ -2570,7 +2593,7 @@ function AccountsSub({ accounts, setAccounts, totalDebt }) {
           <input placeholder="e.g. Wealthsimple TFSA" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inputStyle} />
           <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} style={inputStyle}>{types.map((t) => <option key={t} value={t}>{t}</option>)}</select>
           <input placeholder="Balance" type="number" value={form.balance} onChange={(e) => setForm({ ...form, balance: e.target.value })} style={inputStyle} />
-          <button onClick={addAccount} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <button onClick={addAccount} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={ON_ACCENT} /></button>
         </div>
       </Card>
       <Card>
@@ -2789,7 +2812,7 @@ function InvestSub({ holdings, setHoldings }) {
           <input placeholder="Shares" type="number" value={form.shares} onChange={(e) => setForm({ ...form, shares: e.target.value })} style={inputStyle} />
           <input placeholder="Avg cost" type="number" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} style={inputStyle} />
           <input placeholder="Account (TFSA)" value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })} style={inputStyle} />
-          <button onClick={addHolding} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={INK} /></button>
+          <button onClick={addHolding} style={{ background: BRASS, border: "none", borderRadius: 10, cursor: "pointer" }}><Plus size={16} color={ON_ACCENT} /></button>
         </div>
         <div style={{ color: MUTED, fontSize: 11, marginTop: 8 }}>Tip: Canadian TSX tickers need ".TO" (e.g. XEQT.TO, VFV.TO).</div>
       </Card>
@@ -3067,7 +3090,7 @@ function AssistantTab({ chat, setChat, context, apiKey, executeAction, speakEnab
             <Mic size={15} color={listening ? PAPER : MUTED} />
           </button>
         )}
-        <button onClick={() => send()} disabled={loading} style={{ background: BRASS, border: "none", borderRadius: 10, padding: "0 14px", cursor: "pointer" }}><Send size={15} color={INK} /></button>
+        <button onClick={() => send()} disabled={loading} style={{ background: BRASS, border: "none", borderRadius: 10, padding: "0 14px", cursor: "pointer" }}><Send size={15} color={ON_ACCENT} /></button>
       </div>
     </Card>
   );
