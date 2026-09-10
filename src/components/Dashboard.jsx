@@ -17,7 +17,7 @@ import { fetchExerciseImage } from "../lib/exerciseImages";
 import { loadExerciseDb, exerciseNames, findExerciseImage } from "../lib/exerciseDb";
 import { fileToBase64, scanReceipt } from "../lib/receiptScan";
 import { scanReceiptLocal } from "../lib/receiptScanLocal";
-import { isLocalAISupported, chatLocal, chatLocalStream } from "../lib/localAI";
+import { isLocalAISupported, chatLocal, chatLocalStream, getEngine } from "../lib/localAI";
 import { isMicSupported, recordAndTranscribe } from "../lib/localSTT";
 import { INK, PANEL, PANEL2, CARD, CARD_ELEVATED, RULE, PAPER, MUTED, FAINT, BRASS, VERDI, RUST, SUCCESS, WARNING, INFO, ON_ACCENT, CAT_NUTRITION as CAT_NUTRITION_COLOR, inputStyle, uid, todayStr, fmtDate, fetchQuote, colorFor, DIETARY_TYPES, COMMON_ALLERGENS, recipeMatchesDiet, recipeMatchesAllergies } from "../lib/theme";
 
@@ -172,7 +172,7 @@ function Sidebar({ tab, setTab, allTabs, lowStockCount, mealCount, displayName, 
               <Icon size={16} color={active ? BRASS : MUTED} />
               <span style={{ flex: 1 }}>{t.label}</span>
               {badge > 0 && (
-                <span style={{ background: t.id === "kitchen" ? RUST : BRASS, color: t.id === "kitchen" ? PAPER : INK, borderRadius: 8, fontSize: 10, padding: "1px 6px", fontFamily: "IBM Plex Mono" }}>{badge}</span>
+                <span style={{ background: t.id === "kitchen" ? RUST : BRASS, color: t.id === "kitchen" ? PAPER : INK, borderRadius: 8, fontSize: 10, padding: "1px 6px", fontFamily: "var(--font-ui)" }}>{badge}</span>
               )}
             </button>
           );
@@ -556,6 +556,13 @@ export default function Dashboard() {
     if (!settings.onboarded) setShowOnboarding(true);
 
     setLoading(false);
+
+    // Quietly start loading the free on-device AI model in the background
+    // (unless the user has their own API key, in which case it's unused)
+    // so it's already warm by the time they open the Assistant tab.
+    if (!settings.apiKey && isLocalAISupported()) {
+      getEngine().catch(() => {});
+    }
   };
 
   const loadedForUidRef = useRef(null);
@@ -1017,7 +1024,7 @@ export default function Dashboard() {
             <button onClick={() => setShowReminders(true)} style={{ position: "relative", background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "6px 10px", display: "flex", alignItems: "center", color: MUTED, cursor: "pointer" }}>
               <Bell size={14} />
               {alerts.length > 0 && (
-                <span style={{ position: "absolute", top: -4, right: -4, background: RUST, color: PAPER, borderRadius: 10, fontSize: 9, minWidth: 15, height: 15, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "IBM Plex Mono" }}>{alerts.length}</span>
+                <span style={{ position: "absolute", top: -4, right: -4, background: RUST, color: PAPER, borderRadius: 10, fontSize: 9, minWidth: 15, height: 15, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-ui)" }}>{alerts.length}</span>
               )}
             </button>
             <button onClick={() => setShowSettings((v) => !v)} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "6px 10px", display: "flex", alignItems: "center", gap: 4, color: MUTED, cursor: "pointer", fontSize: 12 }}>
@@ -1249,10 +1256,10 @@ export default function Dashboard() {
               }}>
                 <Icon size={14} /> {t.label}
                 {t.id === "kitchen" && lowStockCount > 0 && (
-                  <span style={{ background: RUST, color: PAPER, borderRadius: 10, fontSize: 10, padding: "1px 6px", fontFamily: "IBM Plex Mono" }}>{lowStockCount}</span>
+                  <span style={{ background: RUST, color: PAPER, borderRadius: 10, fontSize: 10, padding: "1px 6px", fontFamily: "var(--font-ui)" }}>{lowStockCount}</span>
                 )}
                 {t.id === "nutrition" && pendingMeals.length > 0 && (
-                  <span style={{ background: BRASS, color: ON_ACCENT, borderRadius: 10, fontSize: 10, padding: "1px 6px", fontFamily: "IBM Plex Mono" }}>{pendingMeals.length}</span>
+                  <span style={{ background: BRASS, color: ON_ACCENT, borderRadius: 10, fontSize: 10, padding: "1px 6px", fontFamily: "var(--font-ui)" }}>{pendingMeals.length}</span>
                 )}
               </button>
             );
@@ -1314,62 +1321,37 @@ export default function Dashboard() {
 
         <div className="ledger-bottom-nav" style={{
           position: "fixed", bottom: 0, left: 0, right: 0, background: PANEL, borderTop: `1px solid ${RULE}`,
-          padding: "8px 4px calc(8px + env(safe-area-inset-bottom))", justifyContent: "space-around", zIndex: 20,
-          boxShadow: "0 -4px 16px rgba(0,0,0,0.3)",
+          padding: "8px 4px calc(8px + env(safe-area-inset-bottom))", zIndex: 20,
+          boxShadow: "0 -4px 16px rgba(0,0,0,0.3)", overflowX: "auto", WebkitOverflowScrolling: "touch",
         }}>
-          {PRIMARY_TABS.map((t) => {
-            const Icon = t.icon, active = tab === t.id;
-            return (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{
-                display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "transparent",
-                border: "none", color: active ? BRASS : MUTED, cursor: "pointer", fontSize: 10, padding: "4px 8px",
-                position: "relative", transition: "color 0.15s ease",
-              }}>
-                <Icon size={19} style={{ transition: "transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)", transform: active ? "scale(1.12)" : "scale(1)" }} />
-                {t.label}
-                <span className="ledger-nav-dot" style={{ width: 4, height: 4, borderRadius: "50%", background: BRASS, opacity: active ? 1 : 0, transform: active ? "scale(1)" : "scale(0)" }} />
-                {t.id === "kitchen" && lowStockCount > 0 && (
-                  <span style={{ position: "absolute", top: 0, right: 2, background: RUST, width: 7, height: 7, borderRadius: "50%" }} />
-                )}
-              </button>
-            );
-          })}
-          <button onClick={() => setShowMore(true)} style={{
-            display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "transparent",
-            border: "none", color: MORE_TABS.some((t) => t.id === tab) ? BRASS : MUTED, cursor: "pointer", fontSize: 10, padding: "4px 8px",
-          }}>
-            <MoreHorizontal size={19} />
-            More
-          </button>
-        </div>
-
-        {showMore && (
-          <div onClick={() => setShowMore(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 30, display: "flex", alignItems: "flex-end" }}>
-            <div onClick={(e) => e.stopPropagation()} style={{ background: PANEL, borderTopLeftRadius: 12, borderTopRightRadius: 12, padding: "20px 16px calc(20px + env(safe-area-inset-bottom))", width: "100%" }}>
-              <div style={{ width: 36, height: 4, background: RULE, borderRadius: 2, margin: "0 auto 16px" }} />
-              {MORE_TABS.map((t) => {
-                const Icon = t.icon;
-                return (
-                  <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }} style={{
-                    display: "flex", alignItems: "center", gap: 12, width: "100%", background: "transparent", border: "none",
-                    color: PAPER, padding: "14px 8px", cursor: "pointer", fontSize: 15, borderBottom: `1px solid ${RULE}`,
-                  }}>
-                    <Icon size={18} color={BRASS} /> {t.label}
-                    {t.id === "nutrition" && pendingMeals.length > 0 && (
-                      <span style={{ marginLeft: "auto", background: BRASS, color: ON_ACCENT, borderRadius: 10, fontSize: 11, padding: "1px 8px", fontFamily: "IBM Plex Mono" }}>{pendingMeals.length}</span>
-                    )}
-                  </button>
-                );
-              })}
-              <button onClick={() => { setShowSettings(true); setShowMore(false); }} style={{
-                display: "flex", alignItems: "center", gap: 12, width: "100%", background: "transparent", border: "none",
-                color: PAPER, padding: "14px 8px", cursor: "pointer", fontSize: 15,
-              }}>
-                <Settings size={18} color={BRASS} /> Settings
-              </button>
-            </div>
+          <div style={{ display: "flex", gap: 2, width: "max-content", minWidth: "100%", justifyContent: ALL_TABS.length <= 5 ? "space-around" : "flex-start" }}>
+            {ALL_TABS.map((t) => {
+              const Icon = t.icon, active = tab === t.id;
+              const badge = t.id === "kitchen" ? lowStockCount : t.id === "nutrition" ? pendingMeals.length : 0;
+              return (
+                <button key={t.id} onClick={() => setTab(t.id)} style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "transparent",
+                  border: "none", color: active ? BRASS : MUTED, cursor: "pointer", fontSize: 10, padding: "4px 12px",
+                  position: "relative", transition: "color 0.15s ease", flexShrink: 0, minWidth: 62,
+                }}>
+                  <Icon size={19} style={{ transition: "transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)", transform: active ? "scale(1.12)" : "scale(1)" }} />
+                  {t.label}
+                  <span className="ledger-nav-dot" style={{ width: 4, height: 4, borderRadius: "50%", background: BRASS, opacity: active ? 1 : 0, transform: active ? "scale(1)" : "scale(0)" }} />
+                  {badge > 0 && (
+                    <span style={{ position: "absolute", top: 0, right: 6, background: t.id === "kitchen" ? RUST : BRASS, color: t.id === "kitchen" ? PAPER : ON_ACCENT, borderRadius: 8, fontSize: 9, minWidth: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>{badge}</span>
+                  )}
+                </button>
+              );
+            })}
+            <button onClick={() => setShowSettings(true)} style={{
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "transparent",
+              border: "none", color: MUTED, cursor: "pointer", fontSize: 10, padding: "4px 12px", flexShrink: 0, minWidth: 62,
+            }}>
+              <Settings size={19} />
+              Settings
+            </button>
           </div>
-        )}
+        </div>
 
         {showReminders && (
           <RemindersPanel
@@ -1424,7 +1406,7 @@ function RemindersPanel({ alerts, reminders, onClose, addReminder, toggleReminde
               {r.done && <Check size={13} color={ON_ACCENT} strokeWidth={3} />}
             </button>
             <span style={{ flex: 1, fontSize: 13, textDecoration: r.done ? "line-through" : "none", color: r.done ? MUTED : PAPER }}>{r.title}</span>
-            <span style={{ fontSize: 11, color: MUTED, fontFamily: "IBM Plex Mono" }}>{fmtDate(r.dueDate)}</span>
+            <span style={{ fontSize: 11, color: MUTED, fontFamily: "var(--font-ui)" }}>{fmtDate(r.dueDate)}</span>
             <button onClick={() => removeReminder(r.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={13} /></button>
           </div>
         ))}
@@ -1494,7 +1476,7 @@ function Onboarding({ onFinish, setTargets, requestNotifications, dietTypes, tog
         {step === 2 && (
           <>
             <div style={{ fontFamily: "var(--font-ui)", fontWeight: 700, fontSize: 24, color: PAPER, marginBottom: 20 }}>Daily protein target</div>
-            <input type="number" value={proteinGoal} onChange={(e) => setProteinGoal(e.target.value)} style={{ width: "100%", background: PANEL, border: `1px solid ${RULE}`, borderRadius: 10, padding: "12px 14px", color: PAPER, fontFamily: "IBM Plex Mono", fontSize: 14, outline: "none", marginBottom: 24, boxSizing: "border-box", textAlign: "center" }} />
+            <input type="number" value={proteinGoal} onChange={(e) => setProteinGoal(e.target.value)} style={{ width: "100%", background: PANEL, border: `1px solid ${RULE}`, borderRadius: 10, padding: "12px 14px", color: PAPER, fontFamily: "var(--font-ui)", fontSize: 14, outline: "none", marginBottom: 24, boxSizing: "border-box", textAlign: "center" }} />
             <button onClick={() => setStep(3)} style={{ width: "100%", background: BRASS, color: ON_ACCENT, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Continue</button>
             <button onClick={onFinish} style={{ width: "100%", background: "transparent", color: MUTED, border: "none", padding: "8px", fontSize: 13, cursor: "pointer" }}>Skip for now</button>
           </>
@@ -1729,10 +1711,10 @@ function WorkoutTab({ workouts, setWorkouts, showToast }) {
         {workouts.slice(0, 25).map((w) => (
           <div key={w.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${RULE}`, fontSize: 13 }}>
             <ExerciseThumb name={w.exercise} />
-            <span style={{ color: MUTED, fontFamily: "IBM Plex Mono", fontSize: 11, width: 54 }}>{fmtDate(w.date)}</span>
+            <span style={{ color: MUTED, fontFamily: "var(--font-ui)", fontSize: 11, width: 54 }}>{fmtDate(w.date)}</span>
             <span style={{ flex: 1 }}>{w.exercise}</span>
-            <span style={{ fontFamily: "IBM Plex Mono", color: MUTED }}>{w.sets}×{w.reps}</span>
-            <span style={{ fontFamily: "IBM Plex Mono", width: 60, textAlign: "right" }}>{w.weight}lb</span>
+            <span style={{ fontFamily: "var(--font-ui)", color: MUTED }}>{w.sets}×{w.reps}</span>
+            <span style={{ fontFamily: "var(--font-ui)", width: 60, textAlign: "right" }}>{w.weight}lb</span>
             <button onClick={() => removeWorkout(w.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={12} /></button>
           </div>
         ))}
@@ -1832,7 +1814,7 @@ function NutritionTab({ targets, setTargets, meals, setMeals, pendingMeals, onCo
         {todayMeals.map((e) => (
           <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${RULE}`, fontSize: 13 }}>
             <span style={{ flex: 1 }}>{e.name}</span>
-            <span style={{ fontFamily: "IBM Plex Mono", color: MUTED, width: 70, textAlign: "right" }}>{e.calories} cal</span>
+            <span style={{ fontFamily: "var(--font-ui)", color: MUTED, width: 70, textAlign: "right" }}>{e.calories} cal</span>
             <button onClick={() => removeEntry(e.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={12} /></button>
           </div>
         ))}
@@ -1870,7 +1852,7 @@ function ReflectTab({ reflections, setReflections }) {
       {reflections.map((r) => (
         <Card key={r.id} style={{ marginBottom: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            <span style={{ fontFamily: "IBM Plex Mono", fontSize: 11, color: MUTED }}>{fmtDate(r.date)} · <span style={{ color: colorFor(r.mood) }}>{r.mood}</span></span>
+            <span style={{ fontFamily: "var(--font-ui)", fontSize: 11, color: MUTED }}>{fmtDate(r.date)} · <span style={{ color: colorFor(r.mood) }}>{r.mood}</span></span>
             <button onClick={() => removeEntry(r.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={12} /></button>
           </div>
           <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{r.text}</div>
@@ -2393,7 +2375,7 @@ function InventorySub({ kitchen, setKitchen, shoppingList, setShoppingList, low 
               <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${RULE}` }}>
                 <div style={{ flex: 1, fontSize: 13 }}>{item.name}</div>
                 <button onClick={() => adjustQty(item, -1)} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, width: 26, height: 26, cursor: "pointer" }}>–</button>
-                <span style={{ fontFamily: "IBM Plex Mono", width: 50, textAlign: "center", fontSize: 12 }}><LedgerNum value={`${item.qty}${item.unit}`} positive={!isLow} /></span>
+                <span style={{ fontFamily: "var(--font-ui)", width: 50, textAlign: "center", fontSize: 12 }}><LedgerNum value={`${item.qty}${item.unit}`} positive={!isLow} /></span>
                 <button onClick={() => adjustQty(item, 1)} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, width: 26, height: 26, cursor: "pointer" }}>+</button>
                 <button onClick={() => removeItem(item.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={13} /></button>
               </div>
@@ -2503,7 +2485,7 @@ function ShoppingListSub({ shoppingList, setShoppingList, kitchen, setKitchen, d
             <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${RULE}` }}>
               <button onClick={() => togglePurchased(item)} style={{ width: 20, height: 20, borderRadius: 10, border: `1px solid ${MUTED}`, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }} />
               <span style={{ flex: 1, fontSize: 13 }}>{item.name}</span>
-              {item.fromLowStock && <span style={{ fontSize: 10, color: RUST, fontFamily: "IBM Plex Mono" }}>low stock</span>}
+              {item.fromLowStock && <span style={{ fontSize: 10, color: RUST, fontFamily: "var(--font-ui)" }}>low stock</span>}
               <button onClick={() => removeItem(item.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={13} /></button>
             </div>
           ))}
@@ -2719,7 +2701,7 @@ function SpendingSub({ spending, setSpending, kitchen, setKitchen, debts, setDeb
                     {item.checked && <Check size={12} color={ON_ACCENT} strokeWidth={3} />}
                   </span>
                   <span style={{ flex: 1, fontSize: 13, color: item.checked ? PAPER : MUTED }}>{item.name}</span>
-                  {item.price != null && <span style={{ fontSize: 11, color: MUTED, fontFamily: "IBM Plex Mono" }}>${Number(item.price).toFixed(2)}</span>}
+                  {item.price != null && <span style={{ fontSize: 11, color: MUTED, fontFamily: "var(--font-ui)" }}>${Number(item.price).toFixed(2)}</span>}
                 </div>
               ))}
               {receiptReview.items.length === 0 && <div style={{ color: FAINT, fontSize: 12 }}>No individual items detected — just the total will be logged.</div>}
@@ -2771,7 +2753,7 @@ function SpendingSub({ spending, setSpending, kitchen, setKitchen, debts, setDeb
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: colorFor(cat), display: "inline-block" }} />
                 {cat}
               </span>
-              <span style={{ fontFamily: "IBM Plex Mono" }}>${amt.toFixed(2)}</span>
+              <span style={{ fontFamily: "var(--font-ui)" }}>${amt.toFixed(2)}</span>
             </div>
             <div style={{ height: 4, background: RULE, borderRadius: 3 }}><div style={{ width: `${total ? (amt / total) * 100 : 0}%`, height: "100%", background: colorFor(cat), borderRadius: 3, transition: "width 0.3s ease" }} /></div>
           </div>
@@ -2782,13 +2764,13 @@ function SpendingSub({ spending, setSpending, kitchen, setKitchen, debts, setDeb
         <SectionLabel>History — {spending.length} entries</SectionLabel>
         {spending.slice(0, 30).map((s) => (
           <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${RULE}`, fontSize: 13 }}>
-            <span style={{ color: MUTED, fontFamily: "IBM Plex Mono", fontSize: 11, width: 54 }}>{fmtDate(s.date)}</span>
+            <span style={{ color: MUTED, fontFamily: "var(--font-ui)", fontSize: 11, width: 54 }}>{fmtDate(s.date)}</span>
             <span style={{ flex: 1 }}>{s.merchant}</span>
             <span style={{ color: colorFor(s.category), fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: colorFor(s.category), display: "inline-block" }} />
               {s.category}
             </span>
-            <span style={{ fontFamily: "IBM Plex Mono", width: 64, textAlign: "right" }}>${s.amount.toFixed(2)}</span>
+            <span style={{ fontFamily: "var(--font-ui)", width: 64, textAlign: "right" }}>${s.amount.toFixed(2)}</span>
             <button onClick={() => removeEntry(s.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={12} /></button>
           </div>
         ))}
@@ -2840,7 +2822,7 @@ function AccountsSub({ accounts, setAccounts, totalDebt }) {
         {accounts.map((a) => (
           <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${RULE}` }}>
             <div style={{ flex: 1 }}><div style={{ fontSize: 13 }}>{a.name}</div><div style={{ fontSize: 11, color: MUTED, display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: colorFor(a.type), display: "inline-block" }} /><span style={{ color: colorFor(a.type) }}>{a.type}</span> · updated {fmtDate(a.updated_date)}</div></div>
-            <input type="number" value={a.balance} onChange={(e) => updateBalance(a.id, e.target.value)} style={{ ...inputStyle, width: 110, textAlign: "right", fontFamily: "IBM Plex Mono" }} />
+            <input type="number" value={a.balance} onChange={(e) => updateBalance(a.id, e.target.value)} style={{ ...inputStyle, width: 110, textAlign: "right", fontFamily: "var(--font-ui)" }} />
             <button onClick={() => removeAccount(a.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={13} /></button>
           </div>
         ))}
@@ -2977,7 +2959,7 @@ function DebtSub({ debts, setDebts, debtPayments, setDebtPayments }) {
               </div>
               <button onClick={() => removeDebt(d.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={13} /></button>
             </div>
-            <div style={{ fontFamily: "IBM Plex Mono", fontSize: 20, fontWeight: 700, color: d.balance > 0 ? RUST : SUCCESS, marginBottom: overdue ? 6 : 12 }}>
+            <div style={{ fontFamily: "var(--font-ui)", fontSize: 20, fontWeight: 700, color: d.balance > 0 ? RUST : SUCCESS, marginBottom: overdue ? 6 : 12 }}>
               ${d.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </div>
             {overdue && <div style={{ color: RUST, fontSize: 11, marginBottom: 10, display: "flex", alignItems: "center", gap: 4 }}><AlertTriangle size={11} /> Payment overdue</div>}
@@ -2997,9 +2979,9 @@ function DebtSub({ debts, setDebts, debtPayments, setDebtPayments }) {
           <SectionLabel>Recent payments</SectionLabel>
           {recentPayments.map((p) => (
             <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${RULE}`, fontSize: 13 }}>
-              <span style={{ color: MUTED, fontFamily: "IBM Plex Mono", fontSize: 11, width: 54 }}>{fmtDate(p.date)}</span>
+              <span style={{ color: MUTED, fontFamily: "var(--font-ui)", fontSize: 11, width: 54 }}>{fmtDate(p.date)}</span>
               <span style={{ flex: 1 }}>{debtName(p.debtId)}</span>
-              <span style={{ fontFamily: "IBM Plex Mono", color: SUCCESS }}>-${p.amount.toFixed(2)}</span>
+              <span style={{ fontFamily: "var(--font-ui)", color: SUCCESS }}>-${p.amount.toFixed(2)}</span>
             </div>
           ))}
         </Card>
@@ -3062,7 +3044,7 @@ function InvestSub({ holdings, setHoldings }) {
           return (
             <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${RULE}`, fontSize: 13 }}>
               <div style={{ flex: 1 }}><div>{h.ticker} <span style={{ color: MUTED, fontSize: 11 }}>· {h.account || "—"}</span></div><div style={{ fontSize: 11, color: MUTED }}>{h.shares} sh @ avg ${h.cost}</div></div>
-              <div style={{ textAlign: "right" }}><div style={{ fontFamily: "IBM Plex Mono" }}>{price ? `$${price.toFixed(2)}` : "—"}</div>{g !== null && <div style={{ fontSize: 11 }}><LedgerNum value={`${g >= 0 ? "+" : ""}$${g.toFixed(2)}`} positive={g >= 0} /></div>}</div>
+              <div style={{ textAlign: "right" }}><div style={{ fontFamily: "var(--font-ui)" }}>{price ? `$${price.toFixed(2)}` : "—"}</div>{g !== null && <div style={{ fontSize: 11 }}><LedgerNum value={`${g >= 0 ? "+" : ""}$${g.toFixed(2)}`} positive={g >= 0} /></div>}</div>
               <button onClick={() => removeHolding(h.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={13} /></button>
             </div>
           );
@@ -3098,7 +3080,7 @@ function ResearchSub({ research, setResearch }) {
           {notes.map((n) => (
             <div key={n.id} style={{ padding: "8px 0", borderBottom: `1px solid ${RULE}` }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontFamily: "IBM Plex Mono", fontSize: 11, color: MUTED }}>{fmtDate(n.date)}</span>
+                <span style={{ fontFamily: "var(--font-ui)", fontSize: 11, color: MUTED }}>{fmtDate(n.date)}</span>
                 <button onClick={() => removeNote(n.id)} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", opacity: 0.5 }}><Trash2 size={12} /></button>
               </div>
               <div style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{n.note}</div>
