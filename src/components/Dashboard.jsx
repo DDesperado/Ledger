@@ -228,7 +228,7 @@ function ProgressBar({ done, total, label, color = BRASS }) {
 }
 
 function SectionLabel({ children }) {
-  return <div style={{ fontFamily: "IBM Plex Mono", fontSize: 11, letterSpacing: "0.14em", color: MUTED, textTransform: "uppercase", marginBottom: 10 }}>{children}</div>;
+  return <div style={{ fontFamily: "var(--font-ui)", fontWeight: 600, fontSize: 11, letterSpacing: "0.1em", color: MUTED, textTransform: "uppercase", marginBottom: 10 }}>{children}</div>;
 }
 
 function Card({ children, style }) {
@@ -316,7 +316,7 @@ function EmptyState({ icon: Icon, title, actionLabel, onAction }) {
 }
 
 function LedgerNum({ value, positive }) {
-  return <span style={{ fontFamily: "IBM Plex Mono", fontVariantNumeric: "tabular-nums", color: positive === undefined ? PAPER : positive ? VERDI : RUST }}>{value}</span>;
+  return <span style={{ fontFamily: "var(--font-ui)", fontVariantNumeric: "tabular-nums", color: positive === undefined ? PAPER : positive ? VERDI : RUST }}>{value}</span>;
 }
 
 const ASSISTANT_TOOLS = [
@@ -1000,7 +1000,7 @@ export default function Dashboard() {
       <div className="ledger-shell" style={{ maxWidth: 720, margin: "0 auto", padding: "36px 20px 80px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28 }}>
           <div>
-            <div style={{ fontFamily: "IBM Plex Mono", fontSize: 11, letterSpacing: "0.14em", color: BRASS, marginBottom: 8 }}>{dateLabel.toUpperCase()}</div>
+            <div style={{ fontFamily: "var(--font-ui)", fontWeight: 600, fontSize: 11, letterSpacing: "0.1em", color: BRASS, marginBottom: 8 }}>{dateLabel.toUpperCase()}</div>
             <div style={{ fontFamily: "var(--font-ui)", fontWeight: 600, fontSize: 30, lineHeight: 1.15 }}>
               {greeting}, <span style={{ fontStyle: "italic", fontWeight: 500 }}>{displayName}</span>.
             </div>
@@ -1027,7 +1027,14 @@ export default function Dashboard() {
         </div>
 
         {showSettings && (
-          <div style={{ marginBottom: 20 }}>
+          <div style={{ position: "fixed", inset: 0, background: INK, zIndex: 45, overflowY: "auto" }}>
+            <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 20px calc(40px + env(safe-area-inset-bottom))" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <div style={{ fontFamily: "var(--font-ui)", fontWeight: 700, fontSize: 20 }}>Settings</div>
+                <button onClick={() => setShowSettings(false)} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "6px 10px", display: "flex", alignItems: "center", gap: 4, color: MUTED, cursor: "pointer" }}>
+                  <X size={14} /> Close
+                </button>
+              </div>
             <Card style={{ marginBottom: 12 }}>
               <SectionLabel>Profile</SectionLabel>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1188,6 +1195,7 @@ export default function Dashboard() {
                 <LogOut size={13} /> Sign out
               </button>
             </Card>
+            </div>
           </div>
         )}
 
