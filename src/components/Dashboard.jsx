@@ -53,6 +53,27 @@ const DEFAULT_RECIPES = [
   },
 ];
 
+function BottomSheet({ onClose, children, maxWidth = 420 }) {
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 40, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <style>{`
+        @keyframes ledgerBackdropIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes ledgerSheetIn { from { transform: translateY(100%); opacity: 0.7; } to { transform: translateY(0); opacity: 1; } }
+        .ledger-sheet-backdrop { animation: ledgerBackdropIn 0.2s ease; }
+        .ledger-sheet { animation: ledgerSheetIn 0.32s cubic-bezier(0.16, 1, 0.3, 1); }
+      `}</style>
+      <div className="ledger-sheet-backdrop" style={{ position: "absolute", inset: 0 }} />
+      <div onClick={(e) => e.stopPropagation()} className="ledger-sheet" style={{
+        position: "relative", background: CARD, borderTopLeftRadius: 18, borderTopRightRadius: 18,
+        padding: "12px 20px calc(20px + env(safe-area-inset-bottom))", maxWidth, width: "100%", maxHeight: "85vh", overflowY: "auto",
+      }}>
+        <div style={{ width: 36, height: 4, background: RULE, borderRadius: 2, margin: "0 auto 16px" }} />
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function ToastContainer({ toasts }) {
   return (
     <div style={{ position: "fixed", bottom: 90, left: 0, right: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, zIndex: 50, pointerEvents: "none" }}>
@@ -1062,6 +1083,13 @@ export default function Dashboard() {
           }
           @keyframes ledgerSlideIn { from { opacity: 0; transform: translateX(6px); } to { opacity: 1; transform: translateX(0); } }
           .ledger-page-content > div { animation: ledgerSlideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
+          @keyframes ledgerStaggerIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+          .ledger-stagger > * { animation: ledgerStaggerIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both; }
+          .ledger-stagger > *:nth-child(1) { animation-delay: 0.02s; }
+          .ledger-stagger > *:nth-child(2) { animation-delay: 0.07s; }
+          .ledger-stagger > *:nth-child(3) { animation-delay: 0.12s; }
+          .ledger-stagger > *:nth-child(4) { animation-delay: 0.17s; }
+          .ledger-stagger > *:nth-child(n+5) { animation-delay: 0.22s; }
           .ledger-bottom-nav button { position: relative; }
           .ledger-nav-dot { transition: opacity 0.2s ease, transform 0.2s ease; }
           @media (prefers-reduced-motion: reduce) {
@@ -1105,7 +1133,7 @@ export default function Dashboard() {
         )}
         {tab === "reflect" && <ReflectTab reflections={reflections} setReflections={setReflections} />}
         {tab === "finance" && (
-          <FinanceTab spending={spending} setSpending={setSpending} accounts={accounts} setAccounts={setAccounts} holdings={holdings} setHoldings={setHoldings} research={research} setResearch={setResearch} kitchen={kitchen} setKitchen={setKitchen} debts={debts} setDebts={setDebts} debtPayments={debtPayments} setDebtPayments={setDebtPayments} apiKey={apiKey} />
+          <FinanceTab spending={spending} setSpending={setSpending} accounts={accounts} setAccounts={setAccounts} holdings={holdings} setHoldings={setHoldings} research={research} setResearch={setResearch} kitchen={kitchen} setKitchen={setKitchen} debts={debts} setDebts={setDebts} debtPayments={debtPayments} setDebtPayments={setDebtPayments} apiKey={apiKey} showToast={showToast} />
         )}
         {tab === "kitchen" && (
           <KitchenTab
@@ -1117,6 +1145,7 @@ export default function Dashboard() {
             dietTypes={dietTypes} allergies={allergies} onEditDiet={() => { setShowSettings(true); setShowDietSettings(true); }}
             apiKey={apiKey}
             pendingMeals={pendingMeals} setPendingMeals={setPendingMeals}
+            showToast={showToast}
           />
         )}
         {tab === "assistant" && (
@@ -1407,7 +1436,7 @@ function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, 
   const thingsRemaining = items.length - doneToday.length;
 
   return (
-    <div>
+    <div className="ledger-stagger">
       {alerts && alerts.length > 0 && (
         <Card style={{ marginBottom: 16, cursor: "pointer" }} onClick={onOpenReminders}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -1509,10 +1538,14 @@ function WorkoutTab({ workouts, setWorkouts, showToast }) {
 
   const addWorkout = async () => {
     if (!form.exercise.trim() || !form.weight) return;
-    const row = await db.insertRow("workouts", { date: todayStr(), exercise: form.exercise.trim(), sets: Number(form.sets) || 0, reps: Number(form.reps) || 0, weight: Number(form.weight) || 0 });
+    const newWeight = Number(form.weight) || 0;
+    const exerciseName = form.exercise.trim();
+    const priorMax = workouts.filter((w) => w.exercise.toLowerCase() === exerciseName.toLowerCase()).reduce((max, w) => Math.max(max, w.weight), 0);
+    const row = await db.insertRow("workouts", { date: todayStr(), exercise: exerciseName, sets: Number(form.sets) || 0, reps: Number(form.reps) || 0, weight: newWeight });
     setWorkouts([row, ...workouts]);
     setForm({ exercise: "", sets: "", reps: "", weight: "" });
-    showToast?.("Workout saved");
+    if (priorMax > 0 && newWeight > priorMax) showToast?.(`New PR on ${exerciseName} — ${newWeight}lb 🏆`);
+    else showToast?.("Workout saved");
   };
   const removeWorkout = async (id) => { await db.deleteRow("workouts", id); setWorkouts(workouts.filter((w) => w.id !== id)); };
 
@@ -1708,7 +1741,7 @@ function ReflectTab({ reflections, setReflections }) {
   );
 }
 
-function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList, recipes, setRecipes, meals, setMeals, spending, dietTypes, allergies, onEditDiet, apiKey, pendingMeals, setPendingMeals }) {
+function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList, recipes, setRecipes, meals, setMeals, spending, dietTypes, allergies, onEditDiet, apiKey, pendingMeals, setPendingMeals, showToast }) {
   const [sub, setSub] = useState("inventory");
   const low = kitchen.filter((k) => k.qty <= k.threshold);
 
@@ -1750,7 +1783,7 @@ function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList, recipe
 
       {sub === "inventory" && <InventorySub kitchen={kitchen} setKitchen={setKitchen} shoppingList={shoppingList} setShoppingList={setShoppingList} low={low} />}
       {sub === "recipes" && <RecipesSub recipes={recipes} setRecipes={setRecipes} kitchen={kitchen} setKitchen={setKitchen} meals={meals} setMeals={setMeals} dietTypes={dietTypes} allergies={allergies} apiKey={apiKey} pendingMeals={pendingMeals} setPendingMeals={setPendingMeals} />}
-      {sub === "shopping" && <ShoppingListSub shoppingList={shoppingList} setShoppingList={setShoppingList} kitchen={kitchen} setKitchen={setKitchen} dietTypes={dietTypes} allergies={allergies} />}
+      {sub === "shopping" && <ShoppingListSub shoppingList={shoppingList} setShoppingList={setShoppingList} kitchen={kitchen} setKitchen={setKitchen} dietTypes={dietTypes} allergies={allergies} showToast={showToast} />}
     </div>
   );
 }
@@ -1966,8 +1999,7 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
       </Card>
 
       {previewMeal && (
-        <div onClick={() => setPreviewMeal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 40, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: CARD, borderRadius: 14, padding: 20, maxWidth: 420, width: "100%", maxHeight: "85vh", overflowY: "auto" }}>
+        <BottomSheet onClose={() => setPreviewMeal(null)}>
             {previewMeal.strMealThumb && <img src={previewMeal.strMealThumb} alt="" style={{ width: "100%", height: 180, objectFit: "cover", borderRadius: 10, marginBottom: 14 }} />}
             <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>{previewMeal.strMeal}</div>
             <div style={{ color: MUTED, fontSize: 12, marginBottom: 12 }}>{previewMeal.strArea} · {previewMeal.strCategory}</div>
@@ -1985,8 +2017,7 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
               <button onClick={importMeal} style={{ flex: 1, background: BRASS, border: "none", borderRadius: 10, padding: "10px", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Add to my recipes</button>
               <button onClick={() => setPreviewMeal(null)} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: MUTED, borderRadius: 10, padding: "10px", cursor: "pointer", fontSize: 13 }}>Cancel</button>
             </div>
-          </div>
-        </div>
+        </BottomSheet>
       )}
 
       <Card style={{ marginBottom: 16 }}>
@@ -2254,7 +2285,7 @@ function findDietConflict(itemName, dietTypes) {
   return null;
 }
 
-function ShoppingListSub({ shoppingList, setShoppingList, kitchen, setKitchen, dietTypes, allergies }) {
+function ShoppingListSub({ shoppingList, setShoppingList, kitchen, setKitchen, dietTypes, allergies, showToast }) {
   const [form, setForm] = useState({ name: "", category: KITCHEN_CATEGORIES[0] });
   const [conflictWarning, setConflictWarning] = useState(null);
 
@@ -2269,6 +2300,7 @@ function ShoppingListSub({ shoppingList, setShoppingList, kitchen, setKitchen, d
     setShoppingList([row, ...shoppingList]);
     setForm({ name: "", category: form.category });
     setConflictWarning(null);
+    showToast?.("Added to shopping list");
   };
 
   const togglePurchased = async (item) => {
@@ -2359,7 +2391,7 @@ function ShoppingListSub({ shoppingList, setShoppingList, kitchen, setKitchen, d
   );
 }
 
-function FinanceTab({ spending, setSpending, accounts, setAccounts, holdings, setHoldings, research, setResearch, kitchen, setKitchen, debts, setDebts, debtPayments, setDebtPayments, apiKey }) {
+function FinanceTab({ spending, setSpending, accounts, setAccounts, holdings, setHoldings, research, setResearch, kitchen, setKitchen, debts, setDebts, debtPayments, setDebtPayments, apiKey, showToast }) {
   const [sub, setSub] = useState("spending");
   const SUBS = [
     { id: "spending", label: "Spending", icon: ShoppingCart },
@@ -2377,7 +2409,7 @@ function FinanceTab({ spending, setSpending, accounts, setAccounts, holdings, se
           return <button key={s.id} onClick={() => setSub(s.id)} style={{ display: "flex", alignItems: "center", gap: 6, background: active ? PANEL2 : "transparent", border: `1px solid ${active ? BRASS : RULE}`, color: active ? PAPER : MUTED, borderRadius: 16, padding: "5px 12px", cursor: "pointer", fontSize: 12 }}><Icon size={12} /> {s.label}</button>;
         })}
       </div>
-      {sub === "spending" && <SpendingSub spending={spending} setSpending={setSpending} kitchen={kitchen} setKitchen={setKitchen} debts={debts} setDebts={setDebts} apiKey={apiKey} />}
+      {sub === "spending" && <SpendingSub spending={spending} setSpending={setSpending} kitchen={kitchen} setKitchen={setKitchen} debts={debts} setDebts={setDebts} apiKey={apiKey} showToast={showToast} />}
       {sub === "accounts" && <AccountsSub accounts={accounts} setAccounts={setAccounts} totalDebt={totalDebt} />}
       {sub === "debt" && <DebtSub debts={debts} setDebts={setDebts} debtPayments={debtPayments} setDebtPayments={setDebtPayments} />}
       {sub === "invest" && <InvestSub holdings={holdings} setHoldings={setHoldings} />}
@@ -2386,7 +2418,7 @@ function FinanceTab({ spending, setSpending, accounts, setAccounts, holdings, se
   );
 }
 
-function SpendingSub({ spending, setSpending, kitchen, setKitchen, debts, setDebts, apiKey }) {
+function SpendingSub({ spending, setSpending, kitchen, setKitchen, debts, setDebts, apiKey, showToast }) {
   const [form, setForm] = useState({ merchant: "", category: SPENDING_CATEGORIES[0], amount: "" });
   const [candidates, setCandidates] = useState([]);
   const [scanning, setScanning] = useState(false);
@@ -2460,6 +2492,7 @@ function SpendingSub({ spending, setSpending, kitchen, setKitchen, debts, setDeb
     }
     setKitchen(nextKitchen);
     setReceiptReview(null);
+    showToast?.("Transaction saved");
   };
 
   const addEntry = async () => {
@@ -2467,6 +2500,7 @@ function SpendingSub({ spending, setSpending, kitchen, setKitchen, debts, setDeb
     const row = await db.insertRow("spending", { date: todayStr(), merchant: form.merchant.trim(), category: form.category, amount: Number(form.amount) || 0 });
     setSpending([row, ...spending]);
     setForm({ merchant: "", category: form.category, amount: "" });
+    showToast?.("Transaction saved");
   };
   const removeEntry = async (id) => { await db.deleteRow("spending", id); setSpending(spending.filter((s) => s.id !== id)); };
   const byCategory = useMemo(() => { const map = {}; spending.forEach((s) => { map[s.category] = (map[s.category] || 0) + s.amount; }); return Object.entries(map).sort((a, b) => b[1] - a[1]); }, [spending]);
@@ -2520,8 +2554,7 @@ function SpendingSub({ spending, setSpending, kitchen, setKitchen, debts, setDeb
       </Card>
 
       {receiptReview && (
-        <div onClick={() => setReceiptReview(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 40, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: CARD, borderRadius: 14, padding: 20, maxWidth: 420, width: "100%", maxHeight: "85vh", overflowY: "auto" }}>
+        <BottomSheet onClose={() => setReceiptReview(null)}>
             <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 12 }}>Review receipt</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
               <input placeholder="Merchant" value={receiptReview.merchant} onChange={(e) => setReceiptReview({ ...receiptReview, merchant: e.target.value })} style={inputStyle} />
@@ -2556,8 +2589,7 @@ function SpendingSub({ spending, setSpending, kitchen, setKitchen, debts, setDeb
               <button onClick={confirmReceipt} style={{ flex: 1, background: BRASS, border: "none", borderRadius: 10, padding: "10px", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Confirm</button>
               <button onClick={() => setReceiptReview(null)} style={{ flex: 1, background: "transparent", border: `1px solid ${RULE}`, color: MUTED, borderRadius: 10, padding: "10px", cursor: "pointer", fontSize: 13 }}>Cancel</button>
             </div>
-          </div>
-        </div>
+        </BottomSheet>
       )}
 
       <Card style={{ marginBottom: 16 }}>
