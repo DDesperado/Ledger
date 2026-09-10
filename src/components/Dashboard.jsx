@@ -156,7 +156,7 @@ function Sidebar({ tab, setTab, allTabs, lowStockCount, mealCount, displayName, 
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 8px", marginBottom: 32 }}>
         <AurenMark size={28} />
-        <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 16, letterSpacing: "0.06em" }}>AUREN</div>
+        <div style={{ fontFamily: "var(--font-ui)", fontWeight: 700, fontSize: 16, letterSpacing: "0.06em" }}>AUREN</div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
         {allTabs.map((t) => {
@@ -455,6 +455,12 @@ export default function Dashboard() {
   const [theme, setTheme] = useState(() => {
     try { return localStorage.getItem("auren-theme") || "dark"; } catch { return "dark"; }
   });
+  const [accent, setAccent] = useState(() => {
+    try { return localStorage.getItem("auren-accent") || "#C9A464"; } catch { return "#C9A464"; }
+  });
+  const [font, setFont] = useState(() => {
+    try { return localStorage.getItem("auren-font") || "'Inter', sans-serif"; } catch { return "'Inter', sans-serif"; }
+  });
   const [pendingMigration, setPendingMigration] = useState(null);
   const [toasts, setToasts] = useState([]);
 
@@ -545,6 +551,8 @@ export default function Dashboard() {
     setAllergies(settings.allergies || []);
     setSpeakEnabled(!!settings.speakReplies);
     if (settings.theme) applyTheme(settings.theme);
+    if (settings.accent) applyAccent(settings.accent);
+    if (settings.font) applyFont(settings.font);
     if (!settings.onboarded) setShowOnboarding(true);
 
     setLoading(false);
@@ -776,10 +784,32 @@ export default function Dashboard() {
     try { localStorage.setItem("auren-theme", mode); } catch {}
   };
 
+  const applyAccent = (hex) => {
+    setAccent(hex);
+    document.documentElement.style.setProperty("--brass", hex);
+    try { localStorage.setItem("auren-accent", hex); } catch {}
+  };
+
+  const applyFont = (stack) => {
+    setFont(stack);
+    document.documentElement.style.setProperty("--font-ui", stack);
+    try { localStorage.setItem("auren-font", stack); } catch {}
+  };
+
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
     applyTheme(next);
     db.setSettingField("theme", next);
+  };
+
+  const chooseAccent = (hex) => {
+    applyAccent(hex);
+    db.setSettingField("accent", hex);
+  };
+
+  const chooseFont = (stack) => {
+    applyFont(stack);
+    db.setSettingField("font", stack);
   };
 
   useEffect(() => {
@@ -899,7 +929,7 @@ export default function Dashboard() {
 
   if (authUser === null) {
     return (
-      <div style={{ minHeight: "100vh", background: INK, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter" }}>
+      <div style={{ minHeight: "100vh", background: INK, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-ui)" }}>
         <style>{`
           @media (prefers-reduced-motion: no-preference) {
             @keyframes ledgerFadeUp { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
@@ -911,7 +941,7 @@ export default function Dashboard() {
         `}</style>
         <div style={{ width: 320, textAlign: "center" }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}><AurenMark size={64} animated /></div>
-          <div className="ledger-signin-fade" style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6, letterSpacing: "0.08em", animationDelay: "0.65s" }}>AUREN</div>
+          <div className="ledger-signin-fade" style={{ fontFamily: "var(--font-ui)", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6, letterSpacing: "0.08em", animationDelay: "0.65s" }}>AUREN</div>
           <div className="ledger-signin-fade" style={{ color: MUTED, fontSize: 13, marginBottom: 24, animationDelay: "0.8s" }}>Your life. In balance.</div>
           {signInError && <div style={{ color: RUST, fontSize: 12, marginBottom: 16 }}>{signInError}</div>}
           <button
@@ -931,10 +961,10 @@ export default function Dashboard() {
 
   if (pendingMigration) {
     return (
-      <div style={{ minHeight: "100vh", background: INK, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter" }}>
+      <div style={{ minHeight: "100vh", background: INK, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-ui)" }}>
         <div style={{ width: 340, textAlign: "center" }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}><AurenMark size={56} /></div>
-          <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 22, color: PAPER, marginBottom: 12 }}>Found data on this device</div>
+          <div style={{ fontFamily: "var(--font-ui)", fontWeight: 700, fontSize: 22, color: PAPER, marginBottom: 12 }}>Found data on this device</div>
           <div style={{ color: MUTED, fontSize: 13, marginBottom: 24, lineHeight: 1.5 }}>
             There's existing AUREN data saved locally here, from before you signed in. Import it into your account?
           </div>
@@ -964,14 +994,14 @@ export default function Dashboard() {
   const lowStockCount = kitchen.filter((k) => k.qty <= k.threshold).length;
 
   return (
-    <div style={{ minHeight: "100vh", background: INK, fontFamily: "Inter", color: PAPER }}>
+    <div style={{ minHeight: "100vh", background: INK, fontFamily: "var(--font-ui)", color: PAPER }}>
       <Sidebar tab={tab} setTab={setTab} allTabs={ALL_TABS} lowStockCount={lowStockCount} mealCount={pendingMeals.length} displayName={displayName} onSettings={() => setShowSettings(true)} />
       <ToastContainer toasts={toasts} />
       <div className="ledger-shell" style={{ maxWidth: 720, margin: "0 auto", padding: "36px 20px 80px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28 }}>
           <div>
             <div style={{ fontFamily: "IBM Plex Mono", fontSize: 11, letterSpacing: "0.14em", color: BRASS, marginBottom: 8 }}>{dateLabel.toUpperCase()}</div>
-            <div style={{ fontFamily: "Inter", fontWeight: 600, fontSize: 30, lineHeight: 1.15 }}>
+            <div style={{ fontFamily: "var(--font-ui)", fontWeight: 600, fontSize: 30, lineHeight: 1.15 }}>
               {greeting}, <span style={{ fontStyle: "italic", fontWeight: 500 }}>{displayName}</span>.
             </div>
             {tab === "today" && items.length > 0 && (
@@ -997,104 +1027,168 @@ export default function Dashboard() {
         </div>
 
         {showSettings && (
-          <Card style={{ marginBottom: 20 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <SectionLabel>Food & Dietary Preferences</SectionLabel>
-              <button onClick={() => setShowDietSettings((v) => !v)} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 12, color: MUTED, fontSize: 11, padding: "3px 10px", cursor: "pointer" }}>{showDietSettings ? "close" : "edit"}</button>
-            </div>
-            {(dietTypes.length > 0 || allergies.length > 0) && !showDietSettings && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
-                {dietTypes.map((d) => <span key={d} style={{ background: PANEL2, color: BRASS, borderRadius: 12, padding: "3px 10px", fontSize: 11 }}>{d}</span>)}
-                {allergies.map((a) => <span key={a} style={{ background: PANEL2, color: RUST, borderRadius: 12, padding: "3px 10px", fontSize: 11 }}>No {a}</span>)}
-              </div>
-            )}
-            {dietTypes.length === 0 && allergies.length === 0 && !showDietSettings && (
-              <div style={{ color: MUTED, fontSize: 12, marginBottom: 16 }}>No preferences set — all recipes will be shown.</div>
-            )}
-            {showDietSettings && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Diet type</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
-                  {DIETARY_TYPES.map((d) => (
-                    <button key={d} onClick={() => toggleDietType(d)} style={{ background: dietTypes.includes(d) ? BRASS : "transparent", color: dietTypes.includes(d) ? INK : MUTED, border: `1px solid ${dietTypes.includes(d) ? BRASS : RULE}`, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>{d}</button>
-                  ))}
+          <div style={{ marginBottom: 20 }}>
+            <Card style={{ marginBottom: 12 }}>
+              <SectionLabel>Profile</SectionLabel>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 18, background: PANEL2, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, color: BRASS }}>
+                  {(authUser?.displayName || "?")[0]}
                 </div>
-                <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Allergies — recipes containing these are hidden entirely</div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{authUser?.displayName}</div>
+                  <div style={{ color: MUTED, fontSize: 12 }}>{authUser?.email}</div>
+                </div>
+              </div>
+            </Card>
+
+            <Card style={{ marginBottom: 12 }}>
+              <SectionLabel>Appearance</SectionLabel>
+              <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Theme</div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+                {[{ id: "dark", label: "Dark" }, { id: "light", label: "Light" }].map((t) => (
+                  <button key={t.id} onClick={() => { applyTheme(t.id); db.setSettingField("theme", t.id); }} style={{ flex: 1, background: theme === t.id ? BRASS : PANEL2, color: theme === t.id ? ON_ACCENT : MUTED, border: `1px solid ${theme === t.id ? BRASS : RULE}`, borderRadius: 10, padding: "8px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>{t.label}</button>
+                ))}
+              </div>
+              <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Accent color</div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                {[
+                  { hex: "#C9A464", name: "Brass" }, { hex: "#7BA88B", name: "Sage" }, { hex: "#C1543C", name: "Rust" },
+                  { hex: "#7197B8", name: "Slate" }, { hex: "#9B6B9E", name: "Plum" },
+                ].map((c) => (
+                  <button key={c.hex} onClick={() => chooseAccent(c.hex)} title={c.name} style={{
+                    width: 30, height: 30, borderRadius: 15, background: c.hex, cursor: "pointer",
+                    border: accent === c.hex ? `2px solid ${PAPER}` : "2px solid transparent", padding: 0,
+                  }} />
+                ))}
+              </div>
+              <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Typeface</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {[
+                  { stack: "'Inter', sans-serif", label: "Inter" }, { stack: "'Manrope', sans-serif", label: "Manrope" },
+                  { stack: "'Plus Jakarta Sans', sans-serif", label: "Plus Jakarta Sans" }, { stack: "'Space Grotesk', sans-serif", label: "Space Grotesk" },
+                ].map((f) => (
+                  <button key={f.stack} onClick={() => chooseFont(f.stack)} style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center", background: font === f.stack ? PANEL2 : "transparent",
+                    border: `1px solid ${font === f.stack ? BRASS : RULE}`, borderRadius: 10, padding: "8px 12px", cursor: "pointer", color: PAPER, fontSize: 13, fontFamily: f.stack,
+                  }}>
+                    {f.label}
+                    {font === f.stack && <Check size={13} color={BRASS} />}
+                  </button>
+                ))}
+              </div>
+            </Card>
+
+            <Card style={{ marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <SectionLabel>Food & Dietary Preferences</SectionLabel>
+                <button onClick={() => setShowDietSettings((v) => !v)} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 12, color: MUTED, fontSize: 11, padding: "3px 10px", cursor: "pointer" }}>{showDietSettings ? "close" : "edit"}</button>
+              </div>
+              {(dietTypes.length > 0 || allergies.length > 0) && !showDietSettings && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {COMMON_ALLERGENS.map((a) => (
-                    <button key={a} onClick={() => toggleAllergy(a)} style={{ background: allergies.includes(a) ? RUST : "transparent", color: allergies.includes(a) ? PAPER : MUTED, border: `1px solid ${allergies.includes(a) ? RUST : RULE}`, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>{a}</button>
-                  ))}
+                  {dietTypes.map((d) => <span key={d} style={{ background: PANEL2, color: BRASS, borderRadius: 12, padding: "3px 10px", fontSize: 11 }}>{d}</span>)}
+                  {allergies.map((a) => <span key={a} style={{ background: PANEL2, color: RUST, borderRadius: 12, padding: "3px 10px", fontSize: 11 }}>No {a}</span>)}
                 </div>
-              </div>
-            )}
+              )}
+              {dietTypes.length === 0 && allergies.length === 0 && !showDietSettings && (
+                <div style={{ color: MUTED, fontSize: 12 }}>No preferences set — all recipes will be shown.</div>
+              )}
+              {showDietSettings && (
+                <div>
+                  <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Diet type</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+                    {DIETARY_TYPES.map((d) => (
+                      <button key={d} onClick={() => toggleDietType(d)} style={{ background: dietTypes.includes(d) ? BRASS : "transparent", color: dietTypes.includes(d) ? ON_ACCENT : MUTED, border: `1px solid ${dietTypes.includes(d) ? BRASS : RULE}`, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>{d}</button>
+                    ))}
+                  </div>
+                  <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Allergies — recipes containing these are hidden entirely</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {COMMON_ALLERGENS.map((a) => (
+                      <button key={a} onClick={() => toggleAllergy(a)} style={{ background: allergies.includes(a) ? RUST : "transparent", color: allergies.includes(a) ? PAPER : MUTED, border: `1px solid ${allergies.includes(a) ? RUST : RULE}`, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>{a}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Card>
 
-            <SectionLabel>Integrations — Gmail</SectionLabel>
-            <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5, marginBottom: 10 }}>
-              Read-only access to find bills and receipts. AUREN never sees your password, and you can disconnect anytime.
-            </div>
-            <input
-              value={googleClientId} onChange={(e) => saveGoogleClientId(e.target.value)}
-              placeholder="Google OAuth Client ID" style={{ ...inputStyle, marginBottom: 8 }}
-            />
-            <div style={{ color: FAINT, fontSize: 10, lineHeight: 1.5, marginBottom: 10 }}>
-              Create one free at console.cloud.google.com — new project → enable Gmail API → OAuth consent screen (Testing) → Credentials → OAuth client ID → Web application. This ID isn't secret, safe to store here.
-            </div>
-            {gmailConnected ? (
-              <button onClick={disconnectGmail} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: RUST, borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontSize: 12, marginBottom: 16 }}>Disconnect Gmail</button>
-            ) : (
-              <button onClick={connectGmail} disabled={!googleClientId.trim()} style={{ background: googleClientId.trim() ? PANEL2 : "transparent", border: `1px solid ${RULE}`, color: googleClientId.trim() ? PAPER : FAINT, borderRadius: 10, padding: "8px 14px", cursor: googleClientId.trim() ? "pointer" : "not-allowed", fontSize: 12, marginBottom: 8 }}>Connect Gmail</button>
-            )}
-            {gmailError && <div style={{ color: RUST, fontSize: 11, marginBottom: 8 }}>{gmailError}</div>}
-            {gmailConnected && <div style={{ color: SUCCESS, fontSize: 11, marginBottom: 16, display: "flex", alignItems: "center", gap: 4 }}><Check size={12} /> Connected — scan for bills from Finance → Spending.</div>}
+            <Card style={{ marginBottom: 12 }}>
+              <SectionLabel>Integrations — Gmail</SectionLabel>
+              <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5, marginBottom: 10 }}>
+                Read-only access to find bills and receipts. AUREN never sees your password, and you can disconnect anytime.
+              </div>
+              <input
+                value={googleClientId} onChange={(e) => saveGoogleClientId(e.target.value)}
+                placeholder="Google OAuth Client ID" style={{ ...inputStyle, marginBottom: 8 }}
+              />
+              <div style={{ color: FAINT, fontSize: 10, lineHeight: 1.5, marginBottom: 10 }}>
+                Create one free at console.cloud.google.com — new project → enable Gmail API → OAuth consent screen (Testing) → Credentials → OAuth client ID → Web application. This ID isn't secret, safe to store here.
+              </div>
+              {gmailConnected ? (
+                <button onClick={disconnectGmail} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: RUST, borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontSize: 12 }}>Disconnect Gmail</button>
+              ) : (
+                <button onClick={connectGmail} disabled={!googleClientId.trim()} style={{ background: googleClientId.trim() ? PANEL2 : "transparent", border: `1px solid ${RULE}`, color: googleClientId.trim() ? PAPER : FAINT, borderRadius: 10, padding: "8px 14px", cursor: googleClientId.trim() ? "pointer" : "not-allowed", fontSize: 12 }}>Connect Gmail</button>
+              )}
+              {gmailError && <div style={{ color: RUST, fontSize: 11, marginTop: 8 }}>{gmailError}</div>}
+              {gmailConnected && <div style={{ color: SUCCESS, fontSize: 11, marginTop: 8, display: "flex", alignItems: "center", gap: 4 }}><Check size={12} /> Connected — scan for bills from Finance → Spending.</div>}
+            </Card>
 
-            <SectionLabel>Notifications</SectionLabel>
-            {notifPermission === "granted" ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, color: VERDI, fontSize: 12, marginBottom: 16 }}>
-                <Check size={13} /> Enabled — you'll see alerts for low stock and due reminders when you open AUREN.
+            <Card style={{ marginBottom: 12 }}>
+              <SectionLabel>Notifications</SectionLabel>
+              {notifPermission === "granted" ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, color: VERDI, fontSize: 12 }}>
+                  <Check size={13} /> Enabled — you'll see alerts for low stock and due reminders when you open AUREN.
+                </div>
+              ) : notifPermission === "denied" ? (
+                <div style={{ color: MUTED, fontSize: 12 }}>Blocked in your browser settings. You can still check the bell icon for alerts.</div>
+              ) : (
+                <div>
+                  <button onClick={requestNotifications} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontSize: 12, marginBottom: 6 }}>Enable notifications</button>
+                  <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5 }}>Only fires while AUREN is open — this isn't a background push service, so it won't reach you if the tab is closed.</div>
+                </div>
+              )}
+            </Card>
+
+            <Card style={{ marginBottom: 12 }}>
+              <SectionLabel>AI Assistant — Advanced (optional)</SectionLabel>
+              <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5, marginBottom: 10 }}>
+                The Assistant works free with no setup, running on-device in your browser. Add your own Anthropic API key here only if you want higher quality replies and the ability for the assistant to take actions (add to shopping list, log meals, etc).
               </div>
-            ) : notifPermission === "denied" ? (
-              <div style={{ color: MUTED, fontSize: 12, marginBottom: 16 }}>Blocked in your browser settings. You can still check the bell icon for alerts.</div>
-            ) : (
-              <div style={{ marginBottom: 16 }}>
-                <button onClick={requestNotifications} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontSize: 12, marginBottom: 6 }}>Enable notifications</button>
-                <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5 }}>Only fires while AUREN is open — this isn't a background push service, so it won't reach you if the tab is closed.</div>
+              <input
+                type="password" value={apiKey} onChange={(e) => saveApiKey(e.target.value)}
+                placeholder="sk-ant-… (optional)" style={{ ...inputStyle, marginBottom: 8 }}
+              />
+              <div style={{ color: FAINT, fontSize: 11, lineHeight: 1.5 }}>
+                Synced to your account. Get one at console.anthropic.com — set a small spend cap there. Leave blank to keep using the free on-device version.
               </div>
-            )}
-            <SectionLabel>AI Assistant — Advanced (optional)</SectionLabel>
-            <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5, marginBottom: 10 }}>
-              The Assistant works free with no setup, running on-device in your browser. Add your own Anthropic API key here only if you want higher quality replies and the ability for the assistant to take actions (add to shopping list, log meals, etc).
-            </div>
-            <input
-              type="password" value={apiKey} onChange={(e) => saveApiKey(e.target.value)}
-              placeholder="sk-ant-… (optional)" style={{ ...inputStyle, marginBottom: 8 }}
-            />
-            <div style={{ color: FAINT, fontSize: 11, lineHeight: 1.5, marginBottom: 16 }}>
-              Synced to your account. Get one at console.anthropic.com — set a small spend cap there. Leave blank to keep using the free on-device version.
-            </div>
-            <SectionLabel>Backup</SectionLabel>
-            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              <button onClick={downloadBackup} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "8px", cursor: "pointer", fontSize: 12 }}>
-                <Download size={13} /> Download backup
-              </button>
-              <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "8px", cursor: "pointer", fontSize: 12 }}>
-                <Upload size={13} /> Restore backup
-                <input type="file" accept="application/json" onChange={uploadBackup} style={{ display: "none" }} />
-              </label>
-            </div>
-            {items.length > new Set(items.map((i) => `${i.category}|${i.label}`)).size && (
-              <div style={{ background: PANEL2, border: `1px solid ${WARNING}`, borderRadius: 10, padding: 12, marginBottom: 16 }}>
-                <div style={{ fontSize: 12, marginBottom: 8 }}>Some duplicate habits were found on Today's list.</div>
-                <button onClick={dedupeHabits} disabled={dedupeRunning} style={{ background: BRASS, border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
-                  {dedupeRunning ? "Cleaning up…" : "Clean up duplicates"}
+            </Card>
+
+            <Card style={{ marginBottom: 12 }}>
+              <SectionLabel>Backup</SectionLabel>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={downloadBackup} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "8px", cursor: "pointer", fontSize: 12 }}>
+                  <Download size={13} /> Download backup
                 </button>
+                <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "8px", cursor: "pointer", fontSize: 12 }}>
+                  <Upload size={13} /> Restore backup
+                  <input type="file" accept="application/json" onChange={uploadBackup} style={{ display: "none" }} />
+                </label>
               </div>
-            )}
-            <SectionLabel>Account</SectionLabel>
-            <div style={{ color: MUTED, fontSize: 12, marginBottom: 10 }}>{authUser?.email}</div>
-            <button onClick={handleSignOut} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: `1px solid ${RULE}`, color: RUST, borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontSize: 12 }}>
-              <LogOut size={13} /> Sign out
-            </button>
-          </Card>
+              {items.length > new Set(items.map((i) => `${i.category}|${i.label}`)).size && (
+                <div style={{ background: PANEL2, border: `1px solid ${WARNING}`, borderRadius: 10, padding: 12, marginTop: 12 }}>
+                  <div style={{ fontSize: 12, marginBottom: 8 }}>Some duplicate habits were found on Today's list.</div>
+                  <button onClick={dedupeHabits} disabled={dedupeRunning} style={{ background: BRASS, border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 600, color: ON_ACCENT }}>
+                    {dedupeRunning ? "Cleaning up…" : "Clean up duplicates"}
+                  </button>
+                </div>
+              )}
+            </Card>
+
+            <Card>
+              <SectionLabel>Account</SectionLabel>
+              <button onClick={handleSignOut} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: `1px solid ${RULE}`, color: RUST, borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontSize: 12 }}>
+                <LogOut size={13} /> Sign out
+              </button>
+            </Card>
+          </div>
         )}
 
         <style>{`
@@ -1293,7 +1387,7 @@ function RemindersPanel({ alerts, reminders, onClose, addReminder, toggleReminde
       <div onClick={(e) => e.stopPropagation()} style={{ background: PANEL, borderTopLeftRadius: 12, borderTopRightRadius: 12, padding: "20px 16px calc(20px + env(safe-area-inset-bottom))", width: "100%", maxWidth: 720, maxHeight: "80vh", overflowY: "auto" }}>
         <div style={{ width: 36, height: 4, background: RULE, borderRadius: 2, margin: "0 auto 16px" }} />
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div style={{ fontFamily: "Inter", fontSize: 18, fontWeight: 600 }}>Alerts & reminders</div>
+          <div style={{ fontFamily: "var(--font-ui)", fontSize: 18, fontWeight: 600 }}>Alerts & reminders</div>
           <button onClick={onClose} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer" }}><X size={18} /></button>
         </div>
 
@@ -1346,11 +1440,11 @@ function Onboarding({ onFinish, setTargets, requestNotifications, dietTypes, tog
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: INK, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter" }}>
+    <div style={{ position: "fixed", inset: 0, background: INK, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-ui)" }}>
       <div style={{ width: 340, textAlign: "center" }}>
         {step === 0 && (
           <>
-            <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6 }}>Welcome to AUREN</div>
+            <div style={{ fontFamily: "var(--font-ui)", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6 }}>Welcome to AUREN</div>
             <div style={{ color: MUTED, fontSize: 14, marginBottom: 28 }}>Your personal operating system.</div>
             <div style={{ color: MUTED, fontSize: 12, marginBottom: 20, textAlign: "left" }}>What do you want AUREN to help manage?</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28 }}>
@@ -1372,7 +1466,7 @@ function Onboarding({ onFinish, setTargets, requestNotifications, dietTypes, tog
         )}
         {step === 1 && (
           <>
-            <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 24, color: PAPER, marginBottom: 6 }}>How do you eat?</div>
+            <div style={{ fontFamily: "var(--font-ui)", fontWeight: 700, fontSize: 24, color: PAPER, marginBottom: 6 }}>How do you eat?</div>
             <div style={{ color: MUTED, fontSize: 12, marginBottom: 16 }}>This shapes which recipes Kitchen shows you. Editable later in Settings.</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginBottom: 20 }}>
               {DIETARY_TYPES.map((d) => (
@@ -1391,7 +1485,7 @@ function Onboarding({ onFinish, setTargets, requestNotifications, dietTypes, tog
         )}
         {step === 2 && (
           <>
-            <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 24, color: PAPER, marginBottom: 20 }}>Daily protein target</div>
+            <div style={{ fontFamily: "var(--font-ui)", fontWeight: 700, fontSize: 24, color: PAPER, marginBottom: 20 }}>Daily protein target</div>
             <input type="number" value={proteinGoal} onChange={(e) => setProteinGoal(e.target.value)} style={{ width: "100%", background: PANEL, border: `1px solid ${RULE}`, borderRadius: 10, padding: "12px 14px", color: PAPER, fontFamily: "IBM Plex Mono", fontSize: 14, outline: "none", marginBottom: 24, boxSizing: "border-box", textAlign: "center" }} />
             <button onClick={() => setStep(3)} style={{ width: "100%", background: BRASS, color: ON_ACCENT, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Continue</button>
             <button onClick={onFinish} style={{ width: "100%", background: "transparent", color: MUTED, border: "none", padding: "8px", fontSize: 13, cursor: "pointer" }}>Skip for now</button>
@@ -1399,7 +1493,7 @@ function Onboarding({ onFinish, setTargets, requestNotifications, dietTypes, tog
         )}
         {step === 3 && (
           <>
-            <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 24, color: PAPER, marginBottom: 12 }}>Stay on top of things</div>
+            <div style={{ fontFamily: "var(--font-ui)", fontWeight: 700, fontSize: 24, color: PAPER, marginBottom: 12 }}>Stay on top of things</div>
             <div style={{ color: MUTED, fontSize: 13, marginBottom: 24, lineHeight: 1.5 }}>
               Get alerted when you're low on groceries or a reminder's due — only while AUREN is open.
             </div>
@@ -1815,7 +1909,7 @@ function KitchenTab({ kitchen, setKitchen, shoppingList, setShoppingList, recipe
       {grocerySpend > 0 && (
         <Card style={{ marginBottom: 16 }}>
           <SectionLabel>Grocery spend this month</SectionLabel>
-          <div style={{ fontFamily: "Inter", fontSize: 24, fontWeight: 600 }}><LedgerNum value={`$${grocerySpend.toFixed(2)}`} /></div>
+          <div style={{ fontFamily: "var(--font-ui)", fontSize: 24, fontWeight: 600 }}><LedgerNum value={`$${grocerySpend.toFixed(2)}`} /></div>
         </Card>
       )}
 
@@ -2073,7 +2167,7 @@ function RecipesSub({ recipes, setRecipes, kitchen, setKitchen, meals, setMeals,
             <div style={{ display: "flex", gap: 12, flex: 1 }}>
               {recipe.image && <img src={recipe.image} alt="" style={{ width: 56, height: 56, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />}
               <div>
-                <div style={{ fontFamily: "Inter", fontSize: 17, fontWeight: 600 }}>{recipe.name}</div>
+                <div style={{ fontFamily: "var(--font-ui)", fontSize: 17, fontWeight: 600 }}>{recipe.name}</div>
                 <div style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>{recipe.prepTime} min</div>
                 {recipe.usesExpiring && <div style={{ color: WARNING, fontSize: 10, marginTop: 4 }}>Uses something expiring soon</div>}
                 {recipe.dietTags?.length > 0 && (
@@ -2716,7 +2810,7 @@ function AccountsSub({ accounts, setAccounts, totalDebt }) {
     <div>
       <Card style={{ marginBottom: 16 }}>
         <SectionLabel>Net worth</SectionLabel>
-        <div style={{ fontFamily: "Inter", fontSize: 30, fontWeight: 600, color: total >= 0 ? VERDI : RUST, fontVariantNumeric: "tabular-nums" }}>
+        <div style={{ fontFamily: "var(--font-ui)", fontSize: 30, fontWeight: 600, color: total >= 0 ? VERDI : RUST, fontVariantNumeric: "tabular-nums" }}>
           $<AnimatedNumber value={total} format={(v) => Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
         </div>
         <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>
@@ -2819,7 +2913,7 @@ function DebtSub({ debts, setDebts, debtPayments, setDebtPayments }) {
     <div>
       <Card style={{ marginBottom: 16 }}>
         <SectionLabel>Total debt</SectionLabel>
-        <div style={{ fontFamily: "Inter", fontSize: 30, fontWeight: 600, color: totalDebt > 0 ? RUST : PAPER }}>$<AnimatedNumber value={totalDebt} format={(v) => v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /></div>
+        <div style={{ fontFamily: "var(--font-ui)", fontSize: 30, fontWeight: 600, color: totalDebt > 0 ? RUST : PAPER }}>$<AnimatedNumber value={totalDebt} format={(v) => v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /></div>
         {totalMinPayments > 0 && <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>${totalMinPayments.toFixed(2)} in minimum payments due monthly</div>}
       </Card>
 
@@ -2939,7 +3033,7 @@ function InvestSub({ holdings, setHoldings }) {
           <SectionLabel>Portfolio value</SectionLabel>
           <button onClick={refreshPrices} disabled={refreshing} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 12, color: MUTED, fontSize: 11, padding: "3px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}><RefreshCw size={11} className={refreshing ? "animate-spin" : ""} /> refresh</button>
         </div>
-        <div style={{ fontFamily: "Inter", fontSize: 30, fontWeight: 600 }}><LedgerNum value={`$${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} /></div>
+        <div style={{ fontFamily: "var(--font-ui)", fontSize: 30, fontWeight: 600 }}><LedgerNum value={`$${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} /></div>
         <div style={{ fontSize: 12, marginTop: 4 }}><LedgerNum value={`${gain >= 0 ? "+" : ""}$${gain.toFixed(2)}`} positive={gain >= 0} /> <span style={{ color: MUTED }}>vs cost basis</span></div>
       </Card>
       <Card style={{ marginBottom: 16 }}>
