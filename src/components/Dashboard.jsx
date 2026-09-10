@@ -9,7 +9,7 @@ import * as db from "../lib/cloudStore";
 import { setCurrentUser } from "../lib/cloudStore";
 import * as localDb from "../lib/store";
 import { auth, googleProvider } from "../lib/firebase";
-import { onAuthStateChanged, signInWithRedirect, getRedirectResult, signOut } from "firebase/auth";
+import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from "firebase/auth";
 import * as gmail from "../lib/gmail";
 import { EXERCISES } from "../lib/exercises";
 import * as mealdb from "../lib/mealdb";
@@ -587,9 +587,20 @@ export default function Dashboard() {
 
   const signIn = async () => {
     try {
-      await signInWithRedirect(auth, googleProvider);
+      await signInWithPopup(auth, googleProvider);
     } catch (e) {
-      console.error("Sign-in failed", e);
+      if (e.code === "auth/popup-closed-by-user" || e.code === "auth/cancelled-popup-request") {
+        return; // user closed the popup themselves — not an error, don't fall back
+      }
+      // Popup genuinely failed (blocked, unsupported in this browser, etc.) —
+      // fall back to the redirect flow, which works everywhere but leaves
+      // and returns to the page.
+      try {
+        await signInWithRedirect(auth, googleProvider);
+      } catch (e2) {
+        console.error("Sign-in failed", e2);
+        setSignInError(e2.message || "Sign-in failed — please try again.");
+      }
     }
   };
 
