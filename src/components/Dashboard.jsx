@@ -588,7 +588,22 @@ export default function Dashboard() {
   const isMobileDevice = () =>
     typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 
+  const isStandalonePWA = () =>
+    typeof window !== "undefined" && (window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true);
+
   const signIn = async () => {
+    if (isStandalonePWA()) {
+      // Installed home-screen apps lose session state across a full-page
+      // redirect on Android — this is a known Firebase/Android limitation,
+      // not something fixable purely in app code. Popup avoids navigating
+      // the whole installed shell away, which usually works here instead.
+      try {
+        await signInWithPopup(auth, googleProvider);
+      } catch (e) {
+        setSignInError(`Sign-in isn't completing inside the installed app on this device. Please open ${window.location.origin}/Ledger/ in your regular browser (not the home-screen icon) to sign in once — after that it should work from the installed app too.`);
+      }
+      return;
+    }
     if (isMobileDevice()) {
       // Popup-based sign-in is unreliable on mobile browsers — Firebase's
       // own guidance is to use redirect there. It means leaving and
