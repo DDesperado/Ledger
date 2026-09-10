@@ -68,6 +68,15 @@ export function colorFor(key) {
   return PALETTE[hash % PALETTE.length];
 }
 
+// Motion tokens — consistent timing values used across the app's
+// animations instead of inventing durations ad-hoc per component.
+export const MOTION = {
+  FAST: 150,
+  STANDARD: 280,
+  EMPHASIS: 500,
+  LONG: 900,
+};
+
 export const inputStyle = {
   background: INK, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "10px 12px",
   fontSize: 14, outline: "none", width: "100%", boxSizing: "border-box", fontFamily: "Inter",

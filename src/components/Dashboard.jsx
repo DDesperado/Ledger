@@ -53,6 +53,27 @@ const DEFAULT_RECIPES = [
   },
 ];
 
+function ToastContainer({ toasts }) {
+  return (
+    <div style={{ position: "fixed", bottom: 90, left: 0, right: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, zIndex: 50, pointerEvents: "none" }}>
+      <style>{`
+        @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes toastOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(6px); } }
+        .ledger-toast { animation: toastIn 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+        .ledger-toast.leaving { animation: toastOut 0.2s ease forwards; }
+      `}</style>
+      {toasts.map((t) => (
+        <div key={t.id} className={`ledger-toast${t.leaving ? " leaving" : ""}`} style={{
+          background: CARD_ELEVATED, border: `1px solid ${RULE}`, borderRadius: 10, padding: "10px 16px",
+          fontSize: 13, color: PAPER, boxShadow: "0 8px 24px rgba(0,0,0,0.35)", display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <CheckCircle2 size={14} color={SUCCESS} /> {t.message}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SkeletonBlock({ height = 16, width = "100%", radius = 6, style }) {
   return (
     <div style={{
@@ -149,18 +170,16 @@ function AurenMark({ size = 56, color = BRASS, animated = false }) {
     <svg width={size} height={size} viewBox="0 0 100 100" fill="none" className={cls}>
       {animated && (
         <style>{`
-          @keyframes markGrow { from { transform: translateY(6px) scale(0.85); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
-          @keyframes markDraw { from { stroke-dashoffset: 200; } to { stroke-dashoffset: 0; } }
-          @keyframes markDot { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-          .ledger-mark-animated { animation: markGrow 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; transform-origin: 50% 100%; }
-          .ledger-mark-animated .m-ring { stroke-dasharray: 200; animation: markDraw 0.7s ease-out 0.05s both; }
-          .ledger-mark-animated .m-dot { animation: markDot 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) 0.55s both; transform-origin: 50px 26px; }
-          .ledger-mark-animated .m-stem { stroke-dasharray: 60; animation: markDraw 0.35s ease-out 0.6s both; }
-          .ledger-mark-animated .m-leaf-l { stroke-dasharray: 80; animation: markDraw 0.5s ease-out 0.85s both; }
-          .ledger-mark-animated .m-leaf-r { stroke-dasharray: 80; animation: markDraw 0.5s ease-out 1s both; }
+          @media (prefers-reduced-motion: no-preference) {
+            @keyframes markFadeScale { from { transform: scale(0.94); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+            @keyframes markGlow { 0% { opacity: 0; } 60% { opacity: 1; } 100% { opacity: 0.9; } }
+            .ledger-mark-animated { animation: markFadeScale 0.3s ease-out 0.15s both; transform-origin: 50% 50%; }
+            .ledger-mark-animated .m-glow { animation: markGlow 0.2s ease-out 0.45s both; }
+          }
         `}</style>
       )}
       <circle className="m-ring" cx="50" cy="50" r="30" stroke={color} strokeWidth="2.2" />
+      <circle className="m-glow" cx="50" cy="50" r="30" stroke={color} strokeWidth="0.6" opacity="0" style={{ filter: "blur(3px)" }} />
       <circle className="m-dot" cx="50" cy="26" r="2.6" fill={color} />
       <line className="m-stem" x1="50" y1="29" x2="50" y2="66" stroke={color} strokeWidth="2.2" />
       <path className="m-leaf-l" d="M50 55 C 40 55, 33 50, 30 41 C 40 41, 47 46, 50 55 Z" stroke={color} strokeWidth="2.2" fill="none" strokeLinejoin="round" />
@@ -175,7 +194,7 @@ function ProgressBar({ done, total, label, color = BRASS }) {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
         <div style={{ fontSize: 15, fontWeight: 600 }}>
-          <LedgerNum value={done} /> <span style={{ color: MUTED, fontWeight: 400 }}>/ {total} completed</span>
+          <AnimatedNumber value={done} format={(v) => Math.round(v)} style={{ color: PAPER, fontVariantNumeric: "tabular-nums" }} /> <span style={{ color: MUTED, fontWeight: 400 }}>/ {total} completed</span>
         </div>
         <div style={{ fontSize: 15, fontWeight: 700, color }}><AnimatedNumber value={pct} format={(v) => `${Math.round(v)}%`} /></div>
       </div>
@@ -416,6 +435,16 @@ export default function Dashboard() {
     try { return localStorage.getItem("auren-theme") || "dark"; } catch { return "dark"; }
   });
   const [pendingMigration, setPendingMigration] = useState(null);
+  const [toasts, setToasts] = useState([]);
+
+  const showToast = (message) => {
+    const id = uid();
+    setToasts((t) => [...t, { id, message, leaving: false }]);
+    setTimeout(() => {
+      setToasts((t) => t.map((x) => (x.id === id ? { ...x, leaving: true } : x)));
+      setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 200);
+    }, 2200);
+  };
 
   const [items, setItems] = useState([]);
   const [doneToday, setDoneToday] = useState([]);
@@ -612,6 +641,7 @@ export default function Dashboard() {
     const isDone = doneToday.includes(itemId);
     await db.toggleCompletion(itemId, todayStr(), isDone);
     setDoneToday(isDone ? doneToday.filter((x) => x !== itemId) : [...doneToday, itemId]);
+    if (!isDone) showToast("Task completed");
   };
 
   const addItem = async (category, label) => {
@@ -667,6 +697,7 @@ export default function Dashboard() {
     setMeals((prev) => [mealRow, ...prev]);
     await db.deleteRow("pending_meals", meal.id);
     setPendingMeals((prev) => prev.filter((p) => p.id !== meal.id));
+    showToast("Meal logged");
   };
 
   const snoozeMeal = async (meal, minutes = 30) => {
@@ -811,18 +842,23 @@ export default function Dashboard() {
     return (
       <div style={{ minHeight: "100vh", background: INK, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter" }}>
         <style>{`
-          @keyframes ledgerFadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-          .ledger-signin-fade { animation: ledgerFadeUp 0.4s ease both; }
+          @media (prefers-reduced-motion: no-preference) {
+            @keyframes ledgerFadeUp { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+            .ledger-signin-fade { animation: ledgerFadeUp 0.2s ease both; }
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .ledger-mark-animated, .ledger-mark-animated .m-glow, .ledger-signin-fade { animation: none !important; opacity: 1 !important; transform: none !important; }
+          }
         `}</style>
         <div style={{ width: 320, textAlign: "center" }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}><AurenMark size={64} animated /></div>
-          <div className="ledger-signin-fade" style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6, letterSpacing: "0.08em", animationDelay: "1.2s" }}>AUREN</div>
-          <div className="ledger-signin-fade" style={{ color: MUTED, fontSize: 13, marginBottom: 24, animationDelay: "1.3s" }}>Your life. In balance.</div>
+          <div className="ledger-signin-fade" style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6, letterSpacing: "0.08em", animationDelay: "0.65s" }}>AUREN</div>
+          <div className="ledger-signin-fade" style={{ color: MUTED, fontSize: 13, marginBottom: 24, animationDelay: "0.8s" }}>Your life. In balance.</div>
           {signInError && <div style={{ color: RUST, fontSize: 12, marginBottom: 16 }}>{signInError}</div>}
           <button
             className="ledger-signin-fade"
             onClick={signIn}
-            style={{ width: "100%", background: BRASS, color: ON_ACCENT, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, animationDelay: "1.4s" }}
+            style={{ width: "100%", background: BRASS, color: ON_ACCENT, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, animationDelay: "0.9s" }}
           >
             Sign in with Google
           </button>
@@ -871,6 +907,7 @@ export default function Dashboard() {
   return (
     <div style={{ minHeight: "100vh", background: INK, fontFamily: "Inter", color: PAPER }}>
       <Sidebar tab={tab} setTab={setTab} allTabs={ALL_TABS} lowStockCount={lowStockCount} mealCount={pendingMeals.length} displayName={displayName} onSettings={() => setShowSettings(true)} />
+      <ToastContainer toasts={toasts} />
       <div className="ledger-shell" style={{ maxWidth: 720, margin: "0 auto", padding: "36px 20px 80px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28 }}>
           <div>
@@ -1027,6 +1064,9 @@ export default function Dashboard() {
           .ledger-page-content > div { animation: ledgerSlideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
           .ledger-bottom-nav button { position: relative; }
           .ledger-nav-dot { transition: opacity 0.2s ease, transform 0.2s ease; }
+          @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+          }
         `}</style>
 
         <div className="ledger-top-nav" style={{ flexWrap: "wrap", gap: 4, borderBottom: `1px solid ${RULE}`, marginBottom: 24 }}>
@@ -1056,7 +1096,7 @@ export default function Dashboard() {
         {tab === "today" && (
           <TodayTab items={items} categories={categories} doneToday={doneToday} percent={percent} toggleItem={toggleItem} addItem={addItem} removeItem={removeItem} targets={targets} meals={meals} alerts={alerts} onOpenReminders={() => setShowReminders(true)} workouts={workouts} streak={streak} allCompletions={allCompletions} />
         )}
-        {tab === "workout" && <WorkoutTab workouts={workouts} setWorkouts={setWorkouts} />}
+        {tab === "workout" && <WorkoutTab workouts={workouts} setWorkouts={setWorkouts} showToast={showToast} />}
         {tab === "nutrition" && (
           <NutritionTab
             targets={targets} setTargets={setTargets} meals={meals} setMeals={setMeals}
@@ -1453,7 +1493,7 @@ function TodayTab({ items, categories, doneToday, percent, toggleItem, addItem, 
   );
 }
 
-function WorkoutTab({ workouts, setWorkouts }) {
+function WorkoutTab({ workouts, setWorkouts, showToast }) {
   const [form, setForm] = useState({ exercise: "", sets: "", reps: "", weight: "" });
   const [chartExercise, setChartExercise] = useState("");
   const [searchList, setSearchList] = useState(EXERCISES);
@@ -1472,6 +1512,7 @@ function WorkoutTab({ workouts, setWorkouts }) {
     const row = await db.insertRow("workouts", { date: todayStr(), exercise: form.exercise.trim(), sets: Number(form.sets) || 0, reps: Number(form.reps) || 0, weight: Number(form.weight) || 0 });
     setWorkouts([row, ...workouts]);
     setForm({ exercise: "", sets: "", reps: "", weight: "" });
+    showToast?.("Workout saved");
   };
   const removeWorkout = async (id) => { await db.deleteRow("workouts", id); setWorkouts(workouts.filter((w) => w.id !== id)); };
 
