@@ -585,16 +585,28 @@ export default function Dashboard() {
     await loadAllData();
   };
 
+  const isMobileDevice = () =>
+    typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+
   const signIn = async () => {
+    if (isMobileDevice()) {
+      // Popup-based sign-in is unreliable on mobile browsers — Firebase's
+      // own guidance is to use redirect there. It means leaving and
+      // returning to the page, but it actually completes sign-in.
+      try {
+        await signInWithRedirect(auth, googleProvider);
+      } catch (e) {
+        console.error("Sign-in failed", e);
+        setSignInError(e.message || "Sign-in failed — please try again.");
+      }
+      return;
+    }
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (e) {
       if (e.code === "auth/popup-closed-by-user" || e.code === "auth/cancelled-popup-request") {
         return; // user closed the popup themselves — not an error, don't fall back
       }
-      // Popup genuinely failed (blocked, unsupported in this browser, etc.) —
-      // fall back to the redirect flow, which works everywhere but leaves
-      // and returns to the page.
       try {
         await signInWithRedirect(auth, googleProvider);
       } catch (e2) {
