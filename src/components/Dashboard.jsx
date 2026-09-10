@@ -143,14 +143,28 @@ function Sidebar({ tab, setTab, allTabs, lowStockCount, mealCount, displayName, 
   );
 }
 
-function AurenMark({ size = 56, color = BRASS }) {
+function AurenMark({ size = 56, color = BRASS, animated = false }) {
+  const cls = animated ? "ledger-mark-animated" : "";
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" fill="none">
-      <circle cx="50" cy="50" r="30" stroke={color} strokeWidth="2.2" />
-      <circle cx="50" cy="26" r="2.6" fill={color} />
-      <line x1="50" y1="29" x2="50" y2="66" stroke={color} strokeWidth="2.2" />
-      <path d="M50 55 C 40 55, 33 50, 30 41 C 40 41, 47 46, 50 55 Z" stroke={color} strokeWidth="2.2" fill="none" strokeLinejoin="round" />
-      <path d="M50 55 C 60 55, 67 50, 70 41 C 60 41, 53 46, 50 55 Z" stroke={color} strokeWidth="2.2" fill="none" strokeLinejoin="round" />
+    <svg width={size} height={size} viewBox="0 0 100 100" fill="none" className={cls}>
+      {animated && (
+        <style>{`
+          @keyframes markGrow { from { transform: translateY(6px) scale(0.85); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+          @keyframes markDraw { from { stroke-dashoffset: 200; } to { stroke-dashoffset: 0; } }
+          @keyframes markDot { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+          .ledger-mark-animated { animation: markGrow 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; transform-origin: 50% 100%; }
+          .ledger-mark-animated .m-ring { stroke-dasharray: 200; animation: markDraw 0.7s ease-out 0.05s both; }
+          .ledger-mark-animated .m-dot { animation: markDot 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) 0.55s both; transform-origin: 50px 26px; }
+          .ledger-mark-animated .m-stem { stroke-dasharray: 60; animation: markDraw 0.35s ease-out 0.6s both; }
+          .ledger-mark-animated .m-leaf-l { stroke-dasharray: 80; animation: markDraw 0.5s ease-out 0.85s both; }
+          .ledger-mark-animated .m-leaf-r { stroke-dasharray: 80; animation: markDraw 0.5s ease-out 1s both; }
+        `}</style>
+      )}
+      <circle className="m-ring" cx="50" cy="50" r="30" stroke={color} strokeWidth="2.2" />
+      <circle className="m-dot" cx="50" cy="26" r="2.6" fill={color} />
+      <line className="m-stem" x1="50" y1="29" x2="50" y2="66" stroke={color} strokeWidth="2.2" />
+      <path className="m-leaf-l" d="M50 55 C 40 55, 33 50, 30 41 C 40 41, 47 46, 50 55 Z" stroke={color} strokeWidth="2.2" fill="none" strokeLinejoin="round" />
+      <path className="m-leaf-r" d="M50 55 C 60 55, 67 50, 70 41 C 60 41, 53 46, 50 55 Z" stroke={color} strokeWidth="2.2" fill="none" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -796,14 +810,19 @@ export default function Dashboard() {
   if (authUser === null) {
     return (
       <div style={{ minHeight: "100vh", background: INK, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter" }}>
+        <style>{`
+          @keyframes ledgerFadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+          .ledger-signin-fade { animation: ledgerFadeUp 0.4s ease both; }
+        `}</style>
         <div style={{ width: 320, textAlign: "center" }}>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}><AurenMark size={64} /></div>
-          <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6, letterSpacing: "0.08em" }}>AUREN</div>
-          <div style={{ color: MUTED, fontSize: 13, marginBottom: 24 }}>Your life. In balance.</div>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}><AurenMark size={64} animated /></div>
+          <div className="ledger-signin-fade" style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 32, color: PAPER, marginBottom: 6, letterSpacing: "0.08em", animationDelay: "1.2s" }}>AUREN</div>
+          <div className="ledger-signin-fade" style={{ color: MUTED, fontSize: 13, marginBottom: 24, animationDelay: "1.3s" }}>Your life. In balance.</div>
           {signInError && <div style={{ color: RUST, fontSize: 12, marginBottom: 16 }}>{signInError}</div>}
           <button
+            className="ledger-signin-fade"
             onClick={signIn}
-            style={{ width: "100%", background: BRASS, color: ON_ACCENT, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+            style={{ width: "100%", background: BRASS, color: ON_ACCENT, border: "none", borderRadius: 10, padding: "12px 14px", fontWeight: 600, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, animationDelay: "1.4s" }}
           >
             Sign in with Google
           </button>

@@ -1,4 +1,4 @@
-const CACHE = "auren-cache-v5";
+const CACHE = "auren-cache-v6";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
