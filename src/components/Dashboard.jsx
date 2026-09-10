@@ -648,7 +648,7 @@ export default function Dashboard() {
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  const dateLabel = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const dateLabel = new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
   const percent = items.length ? (doneToday.length / items.length) * 100 : 0;
   const categories = useMemo(() => [...new Set(items.map((i) => i.category))], [items]);
 
@@ -1005,30 +1005,30 @@ export default function Dashboard() {
       <Sidebar tab={tab} setTab={setTab} allTabs={ALL_TABS} lowStockCount={lowStockCount} mealCount={pendingMeals.length} displayName={displayName} onSettings={() => setShowSettings(true)} />
       <ToastContainer toasts={toasts} />
       <div className="ledger-shell" style={{ maxWidth: 720, margin: "0 auto", padding: "36px 20px 80px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 32, gap: 12 }}>
           <div>
-            <div style={{ fontFamily: "var(--font-ui)", fontWeight: 600, fontSize: 11, letterSpacing: "0.1em", color: BRASS, marginBottom: 8 }}>{dateLabel.toUpperCase()}</div>
+            <div style={{ fontFamily: "var(--font-ui)", fontWeight: 500, fontSize: 12, letterSpacing: "0.06em", color: BRASS, marginBottom: 10, whiteSpace: "nowrap" }}>{dateLabel.toUpperCase()}</div>
             <div style={{ fontFamily: "var(--font-ui)", fontWeight: 600, fontSize: 30, lineHeight: 1.15 }}>
               {greeting}, <span style={{ fontStyle: "italic", fontWeight: 500 }}>{displayName}</span>.
             </div>
             {tab === "today" && items.length > 0 && (
-              <div style={{ color: MUTED, fontSize: 13, marginTop: 4 }}>{items.length} thing{items.length !== 1 ? "s" : ""} today · {doneToday.length} completed</div>
+              <div style={{ color: MUTED, fontSize: 13, marginTop: 6 }}>{items.length} thing{items.length !== 1 ? "s" : ""} today · {doneToday.length} completed</div>
             )}
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={toggleTheme} title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "6px 10px", display: "flex", alignItems: "center", color: MUTED, cursor: "pointer" }}>
+          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+            <button onClick={toggleTheme} title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "8px", display: "flex", alignItems: "center", color: MUTED, cursor: "pointer" }}>
               <span key={theme} className="ledger-theme-icon" style={{ display: "flex" }}>
-                {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+                {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
               </span>
             </button>
-            <button onClick={() => setShowReminders(true)} style={{ position: "relative", background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "6px 10px", display: "flex", alignItems: "center", color: MUTED, cursor: "pointer" }}>
-              <Bell size={14} />
+            <button onClick={() => setShowReminders(true)} style={{ position: "relative", background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "8px", display: "flex", alignItems: "center", color: MUTED, cursor: "pointer" }}>
+              <Bell size={15} />
               {alerts.length > 0 && (
                 <span style={{ position: "absolute", top: -4, right: -4, background: RUST, color: PAPER, borderRadius: 10, fontSize: 9, minWidth: 15, height: 15, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-ui)" }}>{alerts.length}</span>
               )}
             </button>
-            <button onClick={() => setShowSettings((v) => !v)} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "6px 10px", display: "flex", alignItems: "center", gap: 4, color: MUTED, cursor: "pointer", fontSize: 12 }}>
-              <Settings size={13} /> settings
+            <button onClick={() => setShowSettings((v) => !v)} title="Settings" style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "8px", display: "flex", alignItems: "center", gap: 4, color: MUTED, cursor: "pointer", fontSize: 12 }}>
+              <Settings size={15} />
             </button>
           </div>
         </div>
