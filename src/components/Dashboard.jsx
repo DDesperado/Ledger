@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import {
   Check, Plus, Trash2, Send, Dumbbell, UtensilsCrossed, NotebookPen,
   Sparkles, ListChecks, Loader2, Wallet, ShoppingCart, Landmark, TrendingUp, BookOpen, RefreshCw, Settings, Download, Upload,
-  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2, X, Bell, Mic, Volume2, VolumeX, CreditCard, Search, LogOut, Sun, Moon,
+  ChefHat, MoreHorizontal, AlertTriangle, CheckCircle2, X, Bell, Mic, Volume2, VolumeX, CreditCard, Search, LogOut, Sun, Moon, ChevronRight,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import * as db from "../lib/cloudStore";
@@ -182,6 +182,53 @@ function Sidebar({ tab, setTab, allTabs, lowStockCount, mealCount, displayName, 
         <Settings size={14} /> {displayName}
       </button>
     </div>
+  );
+}
+
+function SettingsGroup({ label, children }) {
+  return (
+    <div style={{ marginBottom: 24 }}>
+      {label && <div style={{ fontSize: 11, letterSpacing: "0.06em", color: MUTED, textTransform: "uppercase", marginBottom: 8, paddingLeft: 4 }}>{label}</div>}
+      <div style={{ background: CARD, borderRadius: 14, border: `1px solid ${RULE}`, overflow: "hidden" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function SettingsRow({ icon: Icon, iconColor = MUTED, label, sublabel, value, onClick, rightElement, isLast, danger }) {
+  return (
+    <div onClick={onClick} style={{
+      display: "flex", alignItems: "center", gap: 12, padding: "13px 14px",
+      borderBottom: isLast ? "none" : `1px solid ${RULE}`, cursor: onClick ? "pointer" : "default",
+    }}>
+      {Icon && (
+        <div style={{ width: 28, height: 28, borderRadius: 8, background: `${iconColor}22`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Icon size={15} color={iconColor} />
+        </div>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14, color: danger ? RUST : PAPER }}>{label}</div>
+        {sublabel && <div style={{ fontSize: 12, color: MUTED, marginTop: 1 }}>{sublabel}</div>}
+      </div>
+      {rightElement}
+      {value && !rightElement && <span style={{ color: MUTED, fontSize: 13, flexShrink: 0 }}>{value}</span>}
+      {onClick && !rightElement && !value && <ChevronRight size={16} color={FAINT} style={{ flexShrink: 0 }} />}
+    </div>
+  );
+}
+
+function Switch({ checked, onChange }) {
+  return (
+    <button onClick={onChange} style={{
+      width: 42, height: 25, borderRadius: 13, background: checked ? BRASS : RULE, border: "none", cursor: "pointer",
+      position: "relative", transition: "background 0.2s ease", padding: 0, flexShrink: 0,
+    }}>
+      <div style={{
+        width: 21, height: 21, borderRadius: 11, background: PAPER, position: "absolute", top: 2,
+        left: checked ? 19 : 2, transition: "left 0.2s cubic-bezier(0.34,1.56,0.64,1)", boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+      }} />
+    </button>
   );
 }
 
@@ -499,6 +546,9 @@ export default function Dashboard() {
   const [dietTypes, setDietTypes] = useState([]);
   const [allergies, setAllergies] = useState([]);
   const [showDietSettings, setShowDietSettings] = useState(false);
+  const [showAppearance, setShowAppearance] = useState(false);
+  const [showGmailDetail, setShowGmailDetail] = useState(false);
+  const [showAiDetail, setShowAiDetail] = useState(false);
   const [googleClientId, setGoogleClientId] = useState("");
   const [gmailConnected, setGmailConnected] = useState(false);
   const [gmailError, setGmailError] = useState("");
@@ -931,7 +981,12 @@ export default function Dashboard() {
   };
 
   if (authUser === undefined) {
-    return <div style={{ minHeight: "100vh", background: INK, display: "flex", alignItems: "center", justifyContent: "center" }}><Loader2 className="animate-spin" color={MUTED} size={22} /></div>;
+    return (
+      <div style={{ minHeight: "100vh", background: INK, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <style>{`@media (prefers-reduced-motion: reduce) { .ledger-mark-animated, .ledger-mark-animated .m-glow { animation: none !important; opacity: 1 !important; transform: none !important; } }`}</style>
+        <AurenMark size={64} animated />
+      </div>
+    );
   }
 
   if (authUser === null) {
@@ -1036,172 +1091,176 @@ export default function Dashboard() {
         {showSettings && (
           <div style={{ position: "fixed", inset: 0, background: INK, zIndex: 45, overflowY: "auto" }}>
             <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 20px calc(40px + env(safe-area-inset-bottom))" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
                 <div style={{ fontFamily: "var(--font-ui)", fontWeight: 700, fontSize: 20 }}>Settings</div>
                 <button onClick={() => setShowSettings(false)} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 20, padding: "6px 10px", display: "flex", alignItems: "center", gap: 4, color: MUTED, cursor: "pointer" }}>
                   <X size={14} /> Close
                 </button>
               </div>
-            <Card style={{ marginBottom: 12 }}>
-              <SectionLabel>Profile</SectionLabel>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 18, background: PANEL2, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, color: BRASS }}>
-                  {(authUser?.displayName || "?")[0]}
-                </div>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{authUser?.displayName}</div>
-                  <div style={{ color: MUTED, fontSize: 12 }}>{authUser?.email}</div>
-                </div>
-              </div>
-            </Card>
 
-            <Card style={{ marginBottom: 12 }}>
-              <SectionLabel>Appearance</SectionLabel>
-              <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Theme</div>
-              <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-                {[{ id: "dark", label: "Dark" }, { id: "light", label: "Light" }].map((t) => (
-                  <button key={t.id} onClick={() => { applyTheme(t.id); db.setSettingField("theme", t.id); }} style={{ flex: 1, background: theme === t.id ? BRASS : PANEL2, color: theme === t.id ? ON_ACCENT : MUTED, border: `1px solid ${theme === t.id ? BRASS : RULE}`, borderRadius: 10, padding: "8px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>{t.label}</button>
-                ))}
-              </div>
-              <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Accent color</div>
-              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-                {[
-                  { hex: "#C9A464", name: "Brass" }, { hex: "#7BA88B", name: "Sage" }, { hex: "#C1543C", name: "Rust" },
-                  { hex: "#7197B8", name: "Slate" }, { hex: "#9B6B9E", name: "Plum" },
-                ].map((c) => (
-                  <button key={c.hex} onClick={() => chooseAccent(c.hex)} title={c.name} style={{
-                    width: 30, height: 30, borderRadius: 15, background: c.hex, cursor: "pointer",
-                    border: accent === c.hex ? `2px solid ${PAPER}` : "2px solid transparent", padding: 0,
-                  }} />
-                ))}
-              </div>
-              <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Typeface</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {[
-                  { stack: "'Inter', sans-serif", label: "Inter" }, { stack: "'Manrope', sans-serif", label: "Manrope" },
-                  { stack: "'Plus Jakarta Sans', sans-serif", label: "Plus Jakarta Sans" }, { stack: "'Space Grotesk', sans-serif", label: "Space Grotesk" },
-                ].map((f) => (
-                  <button key={f.stack} onClick={() => chooseFont(f.stack)} style={{
-                    display: "flex", justifyContent: "space-between", alignItems: "center", background: font === f.stack ? PANEL2 : "transparent",
-                    border: `1px solid ${font === f.stack ? BRASS : RULE}`, borderRadius: 10, padding: "8px 12px", cursor: "pointer", color: PAPER, fontSize: 13, fontFamily: f.stack,
-                  }}>
-                    {f.label}
-                    {font === f.stack && <Check size={13} color={BRASS} />}
-                  </button>
-                ))}
-              </div>
-            </Card>
+              <SettingsGroup>
+                <SettingsRow
+                  icon={() => <div style={{ fontWeight: 700, color: BRASS }}>{(authUser?.displayName || "?")[0]}</div>}
+                  iconColor="transparent"
+                  label={authUser?.displayName}
+                  sublabel={authUser?.email}
+                  isLast
+                />
+              </SettingsGroup>
 
-            <Card style={{ marginBottom: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <SectionLabel>Food & Dietary Preferences</SectionLabel>
-                <button onClick={() => setShowDietSettings((v) => !v)} style={{ background: "transparent", border: `1px solid ${RULE}`, borderRadius: 12, color: MUTED, fontSize: 11, padding: "3px 10px", cursor: "pointer" }}>{showDietSettings ? "close" : "edit"}</button>
-              </div>
-              {(dietTypes.length > 0 || allergies.length > 0) && !showDietSettings && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {dietTypes.map((d) => <span key={d} style={{ background: PANEL2, color: BRASS, borderRadius: 12, padding: "3px 10px", fontSize: 11 }}>{d}</span>)}
-                  {allergies.map((a) => <span key={a} style={{ background: PANEL2, color: RUST, borderRadius: 12, padding: "3px 10px", fontSize: 11 }}>No {a}</span>)}
-                </div>
-              )}
-              {dietTypes.length === 0 && allergies.length === 0 && !showDietSettings && (
-                <div style={{ color: MUTED, fontSize: 12 }}>No preferences set — all recipes will be shown.</div>
-              )}
-              {showDietSettings && (
-                <div>
-                  <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Diet type</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
-                    {DIETARY_TYPES.map((d) => (
-                      <button key={d} onClick={() => toggleDietType(d)} style={{ background: dietTypes.includes(d) ? BRASS : "transparent", color: dietTypes.includes(d) ? ON_ACCENT : MUTED, border: `1px solid ${dietTypes.includes(d) ? BRASS : RULE}`, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>{d}</button>
-                    ))}
+              <SettingsGroup label="Appearance">
+                <SettingsRow
+                  icon={theme === "dark" ? Moon : Sun} iconColor={BRASS}
+                  label="Dark mode"
+                  rightElement={<Switch checked={theme === "dark"} onChange={() => { const next = theme === "dark" ? "light" : "dark"; applyTheme(next); db.setSettingField("theme", next); }} />}
+                />
+                <SettingsRow
+                  icon={() => <div style={{ width: 15, height: 15, borderRadius: 8, background: accent }} />} iconColor="transparent"
+                  label="Accent color" value={showAppearance ? "" : undefined}
+                  onClick={() => setShowAppearance((v) => !v)}
+                />
+                {showAppearance && (
+                  <div style={{ padding: "0 14px 16px" }}>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                      {[
+                        { hex: "#C9A464", name: "Brass" }, { hex: "#7BA88B", name: "Sage" }, { hex: "#C1543C", name: "Rust" },
+                        { hex: "#7197B8", name: "Slate" }, { hex: "#9B6B9E", name: "Plum" },
+                      ].map((c) => (
+                        <button key={c.hex} onClick={() => chooseAccent(c.hex)} title={c.name} style={{
+                          width: 30, height: 30, borderRadius: 15, background: c.hex, cursor: "pointer",
+                          border: accent === c.hex ? `2px solid ${PAPER}` : "2px solid transparent", padding: 0,
+                        }} />
+                      ))}
+                    </div>
+                    <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Typeface</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {[
+                        { stack: "'Inter', sans-serif", label: "Inter" }, { stack: "'Manrope', sans-serif", label: "Manrope" },
+                        { stack: "'Plus Jakarta Sans', sans-serif", label: "Plus Jakarta Sans" }, { stack: "'Space Grotesk', sans-serif", label: "Space Grotesk" },
+                      ].map((f) => (
+                        <button key={f.stack} onClick={() => chooseFont(f.stack)} style={{
+                          display: "flex", justifyContent: "space-between", alignItems: "center", background: font === f.stack ? PANEL2 : "transparent",
+                          border: `1px solid ${font === f.stack ? BRASS : RULE}`, borderRadius: 10, padding: "8px 12px", cursor: "pointer", color: PAPER, fontSize: 13, fontFamily: f.stack,
+                        }}>
+                          {f.label}
+                          {font === f.stack && <Check size={13} color={BRASS} />}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Allergies — recipes containing these are hidden entirely</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {COMMON_ALLERGENS.map((a) => (
-                      <button key={a} onClick={() => toggleAllergy(a)} style={{ background: allergies.includes(a) ? RUST : "transparent", color: allergies.includes(a) ? PAPER : MUTED, border: `1px solid ${allergies.includes(a) ? RUST : RULE}`, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>{a}</button>
-                    ))}
+                )}
+                <SettingsRow
+                  icon={Bell} iconColor={notifPermission === "granted" ? SUCCESS : MUTED}
+                  label="Notifications"
+                  value={notifPermission === "granted" ? "On" : notifPermission === "denied" ? "Blocked" : "Off"}
+                  onClick={notifPermission === "default" ? requestNotifications : undefined}
+                  isLast
+                />
+              </SettingsGroup>
+
+              <SettingsGroup label="Food & Dietary">
+                <SettingsRow
+                  icon={UtensilsCrossed} iconColor={CAT_NUTRITION_COLOR}
+                  label="Diet & allergies"
+                  sublabel={dietTypes.length || allergies.length ? [...dietTypes, ...allergies.map((a) => `no ${a}`)].join(", ") : "Not set"}
+                  onClick={() => setShowDietSettings((v) => !v)}
+                  isLast={!showDietSettings}
+                />
+                {showDietSettings && (
+                  <div style={{ padding: "0 14px 16px" }}>
+                    <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Diet type</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+                      {DIETARY_TYPES.map((d) => (
+                        <button key={d} onClick={() => toggleDietType(d)} style={{ background: dietTypes.includes(d) ? BRASS : "transparent", color: dietTypes.includes(d) ? ON_ACCENT : MUTED, border: `1px solid ${dietTypes.includes(d) ? BRASS : RULE}`, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>{d}</button>
+                      ))}
+                    </div>
+                    <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>Allergies — recipes containing these are hidden entirely</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {COMMON_ALLERGENS.map((a) => (
+                        <button key={a} onClick={() => toggleAllergy(a)} style={{ background: allergies.includes(a) ? RUST : "transparent", color: allergies.includes(a) ? PAPER : MUTED, border: `1px solid ${allergies.includes(a) ? RUST : RULE}`, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>{a}</button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-            </Card>
+                )}
+              </SettingsGroup>
 
-            <Card style={{ marginBottom: 12 }}>
-              <SectionLabel>Integrations — Gmail</SectionLabel>
-              <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5, marginBottom: 10 }}>
-                Read-only access to find bills and receipts. AUREN never sees your password, and you can disconnect anytime.
-              </div>
-              <input
-                value={googleClientId} onChange={(e) => saveGoogleClientId(e.target.value)}
-                placeholder="Google OAuth Client ID" style={{ ...inputStyle, marginBottom: 8 }}
-              />
-              <div style={{ color: FAINT, fontSize: 10, lineHeight: 1.5, marginBottom: 10 }}>
-                Create one free at console.cloud.google.com — new project → enable Gmail API → OAuth consent screen (Testing) → Credentials → OAuth client ID → Web application. This ID isn't secret, safe to store here.
-              </div>
-              {gmailConnected ? (
-                <button onClick={disconnectGmail} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: RUST, borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontSize: 12 }}>Disconnect Gmail</button>
-              ) : (
-                <button onClick={connectGmail} disabled={!googleClientId.trim()} style={{ background: googleClientId.trim() ? PANEL2 : "transparent", border: `1px solid ${RULE}`, color: googleClientId.trim() ? PAPER : FAINT, borderRadius: 10, padding: "8px 14px", cursor: googleClientId.trim() ? "pointer" : "not-allowed", fontSize: 12 }}>Connect Gmail</button>
-              )}
-              {gmailError && <div style={{ color: RUST, fontSize: 11, marginTop: 8 }}>{gmailError}</div>}
-              {gmailConnected && <div style={{ color: SUCCESS, fontSize: 11, marginTop: 8, display: "flex", alignItems: "center", gap: 4 }}><Check size={12} /> Connected — scan for bills from Finance → Spending.</div>}
-            </Card>
+              <SettingsGroup label="Connected accounts">
+                <SettingsRow
+                  icon={Search} iconColor={gmailConnected ? SUCCESS : MUTED}
+                  label="Gmail"
+                  sublabel="Find bills & receipts, read-only"
+                  value={gmailConnected ? "Connected" : "Not connected"}
+                  onClick={() => setShowGmailDetail((v) => !v)}
+                  isLast={!showGmailDetail}
+                />
+                {showGmailDetail && (
+                  <div style={{ padding: "0 14px 16px" }}>
+                    <input
+                      value={googleClientId} onChange={(e) => saveGoogleClientId(e.target.value)}
+                      placeholder="Google OAuth Client ID" style={{ ...inputStyle, marginBottom: 8 }}
+                    />
+                    <div style={{ color: FAINT, fontSize: 10, lineHeight: 1.5, marginBottom: 10 }}>
+                      Create one free at console.cloud.google.com — new project → enable Gmail API → OAuth consent screen (Testing) → Credentials → OAuth client ID → Web application. This ID isn't secret, safe to store here.
+                    </div>
+                    {gmailConnected ? (
+                      <button onClick={disconnectGmail} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: RUST, borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontSize: 12 }}>Disconnect Gmail</button>
+                    ) : (
+                      <button onClick={connectGmail} disabled={!googleClientId.trim()} style={{ background: googleClientId.trim() ? PANEL2 : "transparent", border: `1px solid ${RULE}`, color: googleClientId.trim() ? PAPER : FAINT, borderRadius: 10, padding: "8px 14px", cursor: googleClientId.trim() ? "pointer" : "not-allowed", fontSize: 12 }}>Connect Gmail</button>
+                    )}
+                    {gmailError && <div style={{ color: RUST, fontSize: 11, marginTop: 8 }}>{gmailError}</div>}
+                  </div>
+                )}
+              </SettingsGroup>
 
-            <Card style={{ marginBottom: 12 }}>
-              <SectionLabel>Notifications</SectionLabel>
-              {notifPermission === "granted" ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 6, color: VERDI, fontSize: 12 }}>
-                  <Check size={13} /> Enabled — you'll see alerts for low stock and due reminders when you open AUREN.
-                </div>
-              ) : notifPermission === "denied" ? (
-                <div style={{ color: MUTED, fontSize: 12 }}>Blocked in your browser settings. You can still check the bell icon for alerts.</div>
-              ) : (
-                <div>
-                  <button onClick={requestNotifications} style={{ background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontSize: 12, marginBottom: 6 }}>Enable notifications</button>
-                  <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5 }}>Only fires while AUREN is open — this isn't a background push service, so it won't reach you if the tab is closed.</div>
-                </div>
-              )}
-            </Card>
+              <SettingsGroup label="AI Assistant">
+                <SettingsRow
+                  icon={Sparkles} iconColor="#8B7FA6"
+                  label="Ledger AI"
+                  sublabel="Free on-device — add a key for higher quality"
+                  value={apiKey ? "Cloud (custom key)" : "On-device (free)"}
+                  onClick={() => setShowAiDetail((v) => !v)}
+                  isLast={!showAiDetail}
+                />
+                {showAiDetail && (
+                  <div style={{ padding: "0 14px 16px" }}>
+                    <input
+                      type="password" value={apiKey} onChange={(e) => saveApiKey(e.target.value)}
+                      placeholder="sk-ant-… (optional)" style={{ ...inputStyle, marginBottom: 8 }}
+                    />
+                    <div style={{ color: FAINT, fontSize: 11, lineHeight: 1.5 }}>
+                      Synced to your account. Get one at console.anthropic.com — set a small spend cap there. Leave blank to keep using the free on-device version.
+                    </div>
+                  </div>
+                )}
+              </SettingsGroup>
 
-            <Card style={{ marginBottom: 12 }}>
-              <SectionLabel>AI Assistant — Advanced (optional)</SectionLabel>
-              <div style={{ color: MUTED, fontSize: 11, lineHeight: 1.5, marginBottom: 10 }}>
-                The Assistant works free with no setup, running on-device in your browser. Add your own Anthropic API key here only if you want higher quality replies and the ability for the assistant to take actions (add to shopping list, log meals, etc).
-              </div>
-              <input
-                type="password" value={apiKey} onChange={(e) => saveApiKey(e.target.value)}
-                placeholder="sk-ant-… (optional)" style={{ ...inputStyle, marginBottom: 8 }}
-              />
-              <div style={{ color: FAINT, fontSize: 11, lineHeight: 1.5 }}>
-                Synced to your account. Get one at console.anthropic.com — set a small spend cap there. Leave blank to keep using the free on-device version.
-              </div>
-            </Card>
+              <SettingsGroup label="Data">
+                <SettingsRow icon={Download} iconColor={MUTED} label="Download backup" onClick={downloadBackup} />
+                <SettingsRow
+                  icon={Upload} iconColor={MUTED} label="Restore backup"
+                  rightElement={
+                    <label style={{ cursor: "pointer", color: MUTED }}>
+                      <ChevronRight size={16} color={FAINT} />
+                      <input type="file" accept="application/json" onChange={uploadBackup} style={{ display: "none" }} />
+                    </label>
+                  }
+                  isLast={items.length <= new Set(items.map((i) => `${i.category}|${i.label}`)).size}
+                />
+                {items.length > new Set(items.map((i) => `${i.category}|${i.label}`)).size && (
+                  <div style={{ padding: "0 14px 16px" }}>
+                    <div style={{ background: PANEL2, border: `1px solid ${WARNING}`, borderRadius: 10, padding: 12 }}>
+                      <div style={{ fontSize: 12, marginBottom: 8 }}>Some duplicate habits were found on Today's list.</div>
+                      <button onClick={dedupeHabits} disabled={dedupeRunning} style={{ background: BRASS, border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 600, color: ON_ACCENT }}>
+                        {dedupeRunning ? "Cleaning up…" : "Clean up duplicates"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </SettingsGroup>
 
-            <Card style={{ marginBottom: 12 }}>
-              <SectionLabel>Backup</SectionLabel>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={downloadBackup} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "8px", cursor: "pointer", fontSize: 12 }}>
-                  <Download size={13} /> Download backup
-                </button>
-                <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: PANEL2, border: `1px solid ${RULE}`, color: PAPER, borderRadius: 10, padding: "8px", cursor: "pointer", fontSize: 12 }}>
-                  <Upload size={13} /> Restore backup
-                  <input type="file" accept="application/json" onChange={uploadBackup} style={{ display: "none" }} />
-                </label>
-              </div>
-              {items.length > new Set(items.map((i) => `${i.category}|${i.label}`)).size && (
-                <div style={{ background: PANEL2, border: `1px solid ${WARNING}`, borderRadius: 10, padding: 12, marginTop: 12 }}>
-                  <div style={{ fontSize: 12, marginBottom: 8 }}>Some duplicate habits were found on Today's list.</div>
-                  <button onClick={dedupeHabits} disabled={dedupeRunning} style={{ background: BRASS, border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 600, color: ON_ACCENT }}>
-                    {dedupeRunning ? "Cleaning up…" : "Clean up duplicates"}
-                  </button>
-                </div>
-              )}
-            </Card>
-
-            <Card>
-              <SectionLabel>Account</SectionLabel>
-              <button onClick={handleSignOut} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: `1px solid ${RULE}`, color: RUST, borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontSize: 12 }}>
-                <LogOut size={13} /> Sign out
-              </button>
-            </Card>
+              <SettingsGroup>
+                <SettingsRow icon={LogOut} iconColor={RUST} label="Sign out" onClick={handleSignOut} danger isLast />
+              </SettingsGroup>
             </div>
           </div>
         )}
